@@ -1,0 +1,368 @@
+<template>
+  <v-app>
+    <v-app-bar app class="px-4" color="#1a3a5c">
+      <div class="text-h6 font-weight-medium">Ol Pejeta Drone Tracker</div>
+      <v-spacer />
+      <v-tabs v-model="activeTab" align-tabs="end" color="white">
+        <v-tab
+          v-for="(item, index) in navItems"
+          :key="index"
+          class="text-white text-subtitle-1 font-weight-medium"
+          :value="index"
+        >
+          {{ item.label }}
+        </v-tab>
+      </v-tabs>
+    </v-app-bar>
+
+    <InfoPanel
+      class="mt-16"
+      :distance="distance"
+      :instruction-card="instructionCard"
+      :instructions="instructions"
+      :mission-steps="missionSteps"
+      :status="status"
+      :status-color="statusColor"
+      :telemetry-data="telemetryData"
+      :vehicle-location="vehicleLocation"
+      :vehicle-speed="vehicleSpeed"
+      :vehicle-state="vehicleState"
+    />
+
+    <v-main>
+      <div class="d-flex drone-tracking-container">
+        <MapContainer
+          class="flex-grow-1"
+          :distance="distance"
+          :telemetry-data="telemetryData"
+          @emergency-stop="emergencyStop"
+          @start-mission="startMission"
+        />
+      </div>
+    </v-main>
+
+    <v-snackbar
+      v-model="showSnackbar"
+      :color="snackbarColor"
+      location="top"
+      :timeout="4000"
+    >
+      {{ snackbarMessage }}
+    </v-snackbar>
+
+  </v-app>
+</template>
+
+<script setup>
+  import { computed, onBeforeUnmount, reactive, ref } from 'vue'
+  import InfoPanel from './components/InfoPanel.vue'
+  import MapContainer from './components/MapContainer.vue'
+
+  // Navigation state
+  const activeTab = ref(0)
+  const navItems = ref([
+    { label: 'Dashboard' },
+    { label: 'History' },
+    { label: 'Settings' },
+  ])
+
+
+
+  // Reactive telemetry data object matching your API structure
+  const telemetryData = reactive({
+    position: {
+      latitude: null,
+      longitude: null,
+      altitude_msl: 0,
+      relative_altitude: 0,
+    },
+    velocity: {
+      vx: 0,
+      vy: 0,
+      vz: 0,
+      ground_speed: 0,
+      heading: 0,
+    },
+    battery: {
+      voltage: 0,
+      remaining_percentage: 100,
+    },
+    mission: {
+      current_wp_seq: 0,
+      next_wp_seq: 1,
+      distance_to_wp: 0,
+      progress_percentage: 0,
+    },
+  })
+
+  // Other app state
+  const distance = ref(100)
+  const status = ref('SAFE')
+  const missionActive = ref(false)
+  const showSnackbar = ref(false)
+  const snackbarMessage = ref('')
+  const snackbarColor = ref('success')
+
+  // WebSocket connection
+  const wsConnection = ref(null)
+  const wsConnected = ref(false)
+  const wsReconnectAttempts = ref(0)
+  const maxReconnectAttempts = 5
+
+  // Vehicle info (you might want to move this to telemetryData if it comes from API)
+  const vehicleSpeed = ref(0)
+  const vehicleState = ref('Parked')
+  const vehicleLocation = ref('Site Alpha')
+
+  // Instructions and mission steps
+  const instructions = ref('Vehicle position is currently safe. Maintain current position during drone operation.')
+  const missionSteps = ref([
+    { text: 'Drone take-off', status: 'completed' },
+    { text: 'Field scanning', status: 'current', progress: 45 },
+    { text: 'Data collection at points A, B, C', status: 'pending' },
+    { text: 'Return to base', status: 'pending' },
+  ])
+
+  // Computed properties
+  const statusColor = computed(() => {
+    if (distance.value > 100) {
+      return { dot: 'bg-success', text: 'text-success', bg: 'bg-success-subtle' }
+    } else if (distance.value > 50) {
+      return { dot: 'bg-warning', text: 'text-warning', bg: 'bg-warning-subtle' }
+    } else {
+      return { dot: 'bg-error', text: 'text-error', bg: 'bg-error-subtle' }
+    }
+  })
+
+  const instructionCard = computed(() => {
+    if (distance.value > 100) {
+      return { color: '', variant: 'flat', border: false }
+    } else {
+      return { color: 'error-subtle', variant: 'flat', border: 'start' }
+    }
+  })
+
+  // WebSocket connection function
+  const connectWebSocket = () => {
+    if (wsConnection.value && wsConnection.value.readyState === WebSocket.OPEN) {
+      console.log('WebSocket already connected')
+      return
+    }
+
+    try {
+      console.log('Connecting to drone telemetry WebSocket...')
+      wsConnection.value = new WebSocket('ws://127.0.0.1:8000/vehicles/drone/ws')
+
+      wsConnection.value.onopen = () => {
+        console.log('WebSocket connection established')
+        wsConnected.value = true
+        wsReconnectAttempts.value = 0
+
+        snackbarMessage.value = 'Connected to drone telemetry'
+        snackbarColor.value = 'success'
+        showSnackbar.value = true
+      }
+
+      wsConnection.value.onmessage = event => {
+        try {
+          const data = JSON.parse(event.data)
+
+          // Ignore ping messages
+          if (data.type === 'ping') return
+
+          console.log('Received telemetry data:', data)
+
+          // Update telemetry data object
+          if (data.position) {
+            Object.assign(telemetryData.position, data.position)
+          }
+
+          if (data.velocity) {
+            Object.assign(telemetryData.velocity, data.velocity)
+          }
+
+          if (data.battery) {
+            Object.assign(telemetryData.battery, data.battery)
+          }
+
+          if (data.mission) {
+            Object.assign(telemetryData.mission, data.mission)
+          }
+
+          // Update vehicle info if provided
+          if (data.vehicle_speed !== undefined) {
+            vehicleSpeed.value = data.vehicle_speed
+          }
+          if (data.vehicle_state !== undefined) {
+            vehicleState.value = data.vehicle_state
+          }
+          if (data.vehicle_location !== undefined) {
+            vehicleLocation.value = data.vehicle_location
+          }
+
+        } catch (error) {
+
+          console.error('Error processing telemetry message:', error)
+        }
+      }
+
+      wsConnection.value.onclose = event => {
+        wsConnected.value = false
+        console.log(`WebSocket connection closed: ${event.code} ${event.reason}`)
+
+        if (missionActive.value && event.code !== 1000 && wsReconnectAttempts.value < maxReconnectAttempts) {
+          const delay = Math.min(1000 * Math.pow(2, wsReconnectAttempts.value), 10000)
+          wsReconnectAttempts.value++
+
+          console.log(`Attempting to reconnect in ${delay}ms`)
+          setTimeout(connectWebSocket, delay)
+        }
+      }
+
+      wsConnection.value.onerror = error => {
+        console.error('WebSocket error:', error)
+      }
+
+    } catch (error) {
+      console.error('Error establishing WebSocket connection:', error)
+      snackbarMessage.value = `Connection error: ${error.message}`
+      snackbarColor.value = 'error'
+      showSnackbar.value = true
+    }
+  }
+
+  const disconnectWebSocket = () => {
+    if (wsConnection.value && [WebSocket.OPEN, WebSocket.CONNECTING].includes(wsConnection.value.readyState)) {
+      console.log('Closing WebSocket connection')
+      wsConnection.value.close(1000, 'Disconnecting by user action')
+      wsConnected.value = false
+    }
+  }
+
+  const startMission = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/vehicles/drone/connect', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.detail || 'Failed to connect to drone')
+      }
+
+      // Update initial telemetry data if provided
+      if (data.position) Object.assign(telemetryData.position, data.position)
+      if (data.velocity) Object.assign(telemetryData.velocity, data.velocity)
+      if (data.battery) Object.assign(telemetryData.battery, data.battery)
+      if (data.mission) Object.assign(telemetryData.mission, data.mission)
+
+      missionActive.value = true
+      snackbarMessage.value = 'Mission started successfully'
+      snackbarColor.value = 'success'
+      showSnackbar.value = true
+
+      connectWebSocket()
+
+    } catch (error) {
+      console.error('Error starting mission:', error)
+      if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+        // This often indicates a network error like ERR_CONNECTION_REFUSED
+        snackbarMessage.value = 'Connection Refused: Check if the server is running.'
+        console.log(snackbarMessage.value)
+      } else {
+        snackbarMessage.value = `Error starting mission: ${error.message}`
+      }
+      snackbarColor.value = 'error'
+      showSnackbar.value = true
+      missionActive.value = false
+    }
+  }
+
+  const emergencyStop = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/vehicles/drone/disconnect', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.detail || 'Failed to disconnect drone')
+      }
+
+      missionActive.value = false
+      snackbarMessage.value = 'Emergency stop executed successfully'
+      snackbarColor.value = 'info'
+      showSnackbar.value = true
+
+      disconnectWebSocket()
+
+    } catch (error) {
+      console.error('Error executing emergency stop:', error)
+      snackbarMessage.value = `Error executing emergency stop: ${error.message}`
+      snackbarColor.value = 'error'
+      showSnackbar.value = true
+      missionActive.value = false
+      disconnectWebSocket()
+    }
+  }
+
+  onBeforeUnmount(() => {
+    disconnectWebSocket()
+  })
+</script>
+
+<style scoped>
+.drone-tracking-container {
+  width: 100%;
+  height: 100%;
+}
+:deep(.v-card) {
+  max-width: 400px !important;
+  margin: 0 auto;
+}
+
+:deep(.v-navigation-drawer) {
+  width: 300px !important;
+}
+
+/* Global styles for status dots and text remain here for now */
+.status-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+}
+
+.bg-success {
+  background-color: #2ecc71 !important;
+}
+
+.bg-warning {
+  background-color: #f39c12 !important;
+}
+
+.bg-error {
+  background-color: #e74c3c !important;
+}
+
+.text-success {
+  color: #2ecc71 !important;
+}
+
+.text-warning {
+  color: #f39c12 !important;
+}
+
+.text-error {
+  color: #e74c3c !important;
+}
+</style>

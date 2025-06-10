@@ -36,12 +36,17 @@ def get_vehicle_settings() -> List[Dict[str, Any]]:
     """
     try:
         from settings import vehicle_settings
+
         return vehicle_settings
     except ImportError:
-        print("Could not import vehicle_settings from settings.py. Using default values.")
+        print(
+            "Could not import vehicle_settings from settings.py. Using default values."
+        )
         return DEFAULT_VEHICLE_SETTINGS
 
 
 # Environment variables
-MAVLINK_CONNECTION_STRING = os.getenv("MAVLINK_CONNECTION_STRING", "udp:127.0.0.1:14551")
+MAVLINK_CONNECTION_STRING = os.getenv(
+    "MAVLINK_CONNECTION_STRING", "udp:127.0.0.1:14551"
+)
 WEBSOCKET_PING_INTERVAL = int(os.getenv("WEBSOCKET_PING_INTERVAL", "5"))  # seconds

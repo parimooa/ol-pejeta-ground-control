@@ -6,6 +6,7 @@ from backend.services.vehicle_service import vehicle_service
 
 from backend.api.routes import vehicle
 from backend.api.websockets.telemetry import telemetry_manager
+
 # Import telemetry manager at module level
 
 
@@ -44,7 +45,7 @@ async def startup_event():
     print(f"Current event loop: {loop}")
 
     # Set it in vehicle_service
-    if hasattr(vehicle_service, 'set_event_loop'):
+    if hasattr(vehicle_service, "set_event_loop"):
         vehicle_service.set_event_loop(loop)
         print("Set event loop in vehicle_service")
     else:
@@ -56,8 +57,11 @@ async def startup_event():
 
     # Verify it was set
     print(f"Telemetry manager loop is set: {telemetry_manager.loop is not None}")
-    print(f"Telemetry manager pending queue size: {len(telemetry_manager._pending_telemetry)}")
+    print(
+        f"Telemetry manager pending queue size: {len(telemetry_manager._pending_telemetry)}"
+    )
     print("=" * 50)
+
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -80,8 +84,9 @@ async def debug_set_event_loop():
         "message": "Event loop set manually",
         "loop": str(loop),
         "pending_telemetry_count": len(telemetry_manager._pending_telemetry),
-        "loop_is_set": telemetry_manager.loop is not None
+        "loop_is_set": telemetry_manager.loop is not None,
     }
+
 
 @app.get("/debug/telemetry-status")
 async def debug_telemetry_status():
@@ -90,8 +95,9 @@ async def debug_telemetry_status():
         "loop_is_set": telemetry_manager.loop is not None,
         "pending_telemetry_count": len(telemetry_manager._pending_telemetry),
         "active_connections": len(telemetry_manager.active_connections),
-        "loop_set_event": telemetry_manager._loop_set.is_set()
+        "loop_set_event": telemetry_manager._loop_set.is_set(),
     }
+
 
 if __name__ == "__main__":
     uvicorn.run("backend.main:app", host="0.0.0.0", port=8000, reload=True)

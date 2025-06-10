@@ -129,6 +129,134 @@ class VehicleService:
 
         return vehicle.position()
 
+    def upload_mission(
+        self, vehicle_type: str, waypoints_file: str = "wp.waypoints"
+    ) -> int:
+        """Upload mission waypoints to the vehicle.
+
+        Args:
+            vehicle_type: The type of vehicle to upload the mission to
+            waypoints_file: Path to the waypoints file (default: "wp.waypoints")
+
+        Returns:
+            Number of waypoints uploaded or False if it failed
+        """
+        vehicle = self.get_vehicle(vehicle_type)
+        if not vehicle or not vehicle.vehicle:
+            print(f"Vehicle {vehicle_type} not connected. Cannot upload mission.")
+            return False
+
+        try:
+            from pymavlink import mavwp, mavutil
+
+            wploader = mavwp.MAVWPLoader()
+            try:
+                mission_total_waypoints = wploader.load(waypoints_file)
+                print(
+                    f"Loaded {mission_total_waypoints} waypoints from '{waypoints_file}'"
+                )
+            except FileNotFoundError:
+                print(f"Error: Waypoint file '{waypoints_file}' not found.")
+                return False
+
+            if mission_total_waypoints == 0:
+                print(f"No waypoints found in '{waypoints_file}'")
+                return False
+
+            print("Clearing existing mission...")
+            vehicle.vehicle.mav.mission_clear_all_send(
+                vehicle.vehicle.target_system, vehicle.vehicle.target_component
+            )
+            ack_msg = vehicle.vehicle.recv_match(
+                type="MISSION_ACK", blocking=True, timeout=5
+            )
+
+            if ack_msg is None:
+                print("Mission clear timed out. No MISSION_ACK received.")
+                return False
+            if ack_msg.type != mavutil.mavlink.MAV_MISSION_ACCEPTED:
+                print(f"Mission clear failed with error: {ack_msg.type}")
+                return False
+            print("Existing mission cleared.")
+
+            print(f"Sending waypoint count: {mission_total_waypoints}")
+            vehicle.vehicle.waypoint_count_send(mission_total_waypoints)
+
+            for i in range(mission_total_waypoints):
+                msg = vehicle.vehicle.recv_match(
+                    type=["MISSION_REQUEST", "MISSION_REQUEST_INT"],
+                    blocking=True,
+                    timeout=10,
+                )
+                if not msg:
+                    print(
+                        f"No mission request received for waypoint {i}. Upload failed."
+                    )
+                    return False
+
+                print(f"Received mission request for sequence {msg.seq}")
+                if msg.seq != i:
+                    print(
+                        f"Expected waypoint {i} but received request for {msg.seq}. Upload failed."
+                    )
+                    return False
+
+                wp = wploader.wp(i)
+                if hasattr(vehicle.vehicle.mav, "mission_item_int_send"):
+                    vehicle.vehicle.mav.mission_item_int_send(
+                        vehicle.vehicle.target_system,
+                        vehicle.vehicle.target_component,
+                        wp.seq,
+                        wp.frame,
+                        wp.command,
+                        wp.current,
+                        wp.autocontinue,
+                        wp.param1,
+                        wp.param2,
+                        wp.param3,
+                        wp.param4,
+                        int(wp.x * 1e7),
+                        int(wp.y * 1e7),
+                        wp.z,
+                    )
+                else:
+                    vehicle.vehicle.mav.mission_item_send(
+                        vehicle.vehicle.target_system,
+                        vehicle.vehicle.target_component,
+                        wp.seq,
+                        wp.frame,
+                        wp.command,
+                        wp.current,
+                        wp.autocontinue,
+                        wp.param1,
+                        wp.param2,
+                        wp.param3,
+                        wp.param4,
+                        wp.x,
+                        wp.y,
+                        wp.z,
+                    )
+                print(f"Sent waypoint {i}: CMD {wp.command} ({wp.x}, {wp.y}, {wp.z})")
+
+            ack_msg = vehicle.vehicle.recv_match(
+                type="MISSION_ACK", blocking=True, timeout=15
+            )
+            if not ack_msg or ack_msg.type != mavutil.mavlink.MAV_MISSION_ACCEPTED:
+                print(
+                    f"Mission upload failed with error: {ack_msg.type if ack_msg else 'Timeout'}"
+                )
+                return False
+
+            print("Mission upload successful.")
+            return mission_total_waypoints
+
+        except Exception as e:
+            print(f"An error occurred during mission upload: {e}")
+            import traceback
+
+            traceback.print_exc()
+            return False
+
 
 # Create a singleton instance
 vehicle_service = VehicleService()

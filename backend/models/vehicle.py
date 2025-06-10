@@ -32,11 +32,15 @@ class Vehicle:
         self._stop_threads = threading.Event()
 
     def __repr__(self):
-        return f"Vehicle({self.vehicle_type}, {self.device}, {self.port}, {self.protocol})"
+        return (
+            f"Vehicle({self.vehicle_type}, {self.device}, {self.port}, {self.protocol})"
+        )
 
     def connect_vehicle(self):
         """Connect to the vehicle and start heartbeat thread."""
-        print(f"Connecting to vehicle on: {self.vehicle_type} at {self.connection_string}")
+        print(
+            f"Connecting to vehicle on: {self.vehicle_type} at {self.connection_string}"
+        )
         self.vehicle = mavutil.mavlink_connection(
             self.connection_string, source_system=255
         )
@@ -47,7 +51,8 @@ class Vehicle:
             f"Connected to system {self.vehicle.target_system} component {self.vehicle.target_component}"
         )
         self.vehicle.mav.statustext_send(
-            mavutil.mavlink.MAV_SEVERITY_NOTICE, "Connected to drone control system".encode()
+            mavutil.mavlink.MAV_SEVERITY_NOTICE,
+            "Connected to drone control system".encode(),
         )
 
         # Reset the stop flag if it was set
@@ -130,12 +135,10 @@ class Vehicle:
         start_time = time.time()
         timeout_duration = 10
         while time.time() - start_time < timeout_duration:
-            msg = self.vehicle.recv_match(
-                type="HEARTBEAT", blocking=True, timeout=1
-            )
+            msg = self.vehicle.recv_match(type="HEARTBEAT", blocking=True, timeout=1)
             if msg:
                 if msg.custom_mode == mode_id.value and (
-                        msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED
+                    msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED
                 ):
                     print(
                         f"Mode changed to {mode_id.name} successfully (confirmed by HEARTBEAT)."
@@ -229,8 +232,12 @@ class Vehicle:
                     telemetry["heading"] = msg.hdg / 100.0 if msg.hdg != 65535 else None
 
                 elif msg_type == "SYS_STATUS":
-                    telemetry["battery_voltage"] = msg.voltage_battery / 1000.0  # mV to V
-                    telemetry["battery_remaining_percentage"] = msg.battery_remaining  # Percentage
+                    telemetry["battery_voltage"] = (
+                        msg.voltage_battery / 1000.0
+                    )  # mV to V
+                    telemetry["battery_remaining_percentage"] = (
+                        msg.battery_remaining
+                    )  # Percentage
 
                 elif msg_type == "MISSION_CURRENT":
                     telemetry["current_mission_wp_seq"] = msg.seq
@@ -249,8 +256,8 @@ class Vehicle:
 
             # Calculate mission progress percentage
             if (
-                    self.mission_total_waypoints > 1
-                    and telemetry["current_mission_wp_seq"] is not None
+                self.mission_total_waypoints > 1
+                and telemetry["current_mission_wp_seq"] is not None
             ):
                 current_seq = telemetry["current_mission_wp_seq"]
                 total_wps = self.mission_total_waypoints
@@ -270,6 +277,7 @@ class Vehicle:
         except Exception as e:
             print(f"Error getting position data: {e}")
             import traceback
+
             traceback.print_exc()
 
         return telemetry

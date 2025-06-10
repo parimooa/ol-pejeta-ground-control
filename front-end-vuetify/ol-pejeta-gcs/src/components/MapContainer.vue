@@ -46,7 +46,7 @@
         </v-chip>
       </div>
 
-           <div v-if="telemetryData" class="telemetry-status pa-2">
+      <div v-if="telemetryData" class="telemetry-status pa-2">
         <v-chip
           :color="telemetryConnected ? 'green' : 'red'"
           prepend-icon="mdi-car-connected"
@@ -65,7 +65,7 @@
             prepend-icon="mdi-play"
             rounded="xl"
             variant="elevated"
-            @click="handleStartMission"
+            @click="handleStartMission('drone')"
           >
             Connect Drone
           </v-btn>
@@ -85,7 +85,7 @@
             prepend-icon="mdi-play"
             rounded="xl"
             variant="elevated"
-            @click=""
+            @click="handleStartMission('car')"
           >
             Connect Vehicle
           </v-btn>
@@ -161,9 +161,9 @@
   })
 
   // Add button handlers
-  const handleStartMission = () => {
+  const handleStartMission = vehicleType => {
     console.log('MapContainer: Start Mission button clicked')
-    emit('start-mission')
+    emit('start-mission', vehicleType)
   }
 
   const handleEmergencyStop = () => {
@@ -229,7 +229,7 @@
 
     // Update drone position
     dronePosition.value = { x: mapCoords[0], y: mapCoords[1] }
-
+    vehiclePosition.value = { x: mapCoords[0] , y: mapCoords[1] }
     // Disable manual control when telemetry is active
     manualControl.value = false
 
@@ -238,7 +238,7 @@
 
     // Emit position update
     emit('update:drone-position', dronePosition.value)
-
+    emit('update:vehicle-position', vehiclePosition.value)
     console.log(`Drone position updated from telemetry: ${latitude}, ${longitude}`)
   }
 
@@ -415,7 +415,7 @@
 
     vehicleFeature = new Feature({
       geometry: new Point([vehiclePosition.value.x, vehiclePosition.value.y]),
-      type: 'vehicle',
+      type: 'car',
     })
 
     safetyRadiusFeature = new Feature({

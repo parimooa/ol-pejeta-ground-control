@@ -41,11 +41,16 @@ class TelemetryWebsocketManager:
     def _process_pending_telemetry(self):
         """Process any telemetry that was queued before the loop was available."""
         if self._pending_telemetry and self.loop:
-            print(f"Processing {len(self._pending_telemetry)} pending telemetry messages")
+            print(
+                f"Processing {len(self._pending_telemetry)} pending telemetry messages"
+            )
             for vehicle_type, telemetry in self._pending_telemetry:
                 try:
+
                     def schedule_broadcast():
-                        return self.loop.create_task(self._broadcast_telemetry(vehicle_type, telemetry))
+                        return self.loop.create_task(
+                            self._broadcast_telemetry(vehicle_type, telemetry)
+                        )
 
                     self.loop.call_soon_threadsafe(schedule_broadcast)
                 except Exception as e:
@@ -85,8 +90,11 @@ class TelemetryWebsocketManager:
                 if self.loop and not self.loop.is_closed():
                     # Event loop is available, schedule immediately
                     try:
+
                         def schedule_broadcast():
-                            return self.loop.create_task(self._broadcast_telemetry(vehicle_type, telemetry))
+                            return self.loop.create_task(
+                                self._broadcast_telemetry(vehicle_type, telemetry)
+                            )
 
                         self.loop.call_soon_threadsafe(schedule_broadcast)
 
@@ -96,7 +104,9 @@ class TelemetryWebsocketManager:
                 elif len(self._pending_telemetry) < 100:  # Limit pending queue size
                     # Event loop not available yet, queue the telemetry
                     self._pending_telemetry.append((vehicle_type, telemetry))
-                    print(f"Queued telemetry (queue size: {len(self._pending_telemetry)})")
+                    print(
+                        f"Queued telemetry (queue size: {len(self._pending_telemetry)})"
+                    )
 
                     # Try to wait for loop to become available (non-blocking check)
                     if not self._loop_set.is_set():
@@ -105,13 +115,17 @@ class TelemetryWebsocketManager:
                             if self.wait_for_loop(timeout=30.0):  # Longer timeout
                                 self._process_pending_telemetry()
                             else:
-                                print("WARNING: Event loop never became available, clearing pending telemetry")
+                                print(
+                                    "WARNING: Event loop never became available, clearing pending telemetry"
+                                )
                                 self._pending_telemetry.clear()
 
                         # Only start one wait thread
-                        if not hasattr(self, '_waiting_for_loop'):
+                        if not hasattr(self, "_waiting_for_loop"):
                             self._waiting_for_loop = True
-                            threading.Thread(target=wait_and_process, daemon=True).start()
+                            threading.Thread(
+                                target=wait_and_process, daemon=True
+                            ).start()
                 else:
                     print("WARNING: Telemetry queue full, dropping telemetry data")
 

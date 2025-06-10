@@ -67,7 +67,6 @@
   ])
 
 
-
   // Reactive telemetry data object matching your API structure
   const telemetryData = reactive({
     position: {
@@ -104,8 +103,18 @@
   const snackbarColor = ref('success')
 
   // WebSocket connection
-  const wsConnection = ref(null)
-  const wsConnected = ref(false)
+  // WebSocket connections
+  const wsConnections = reactive({
+    drone: null,
+    vehicle: null,
+  })
+
+  const wsConnected = reactive({
+    drone: false,
+    vehicle: false,
+  })
+
+
   const wsReconnectAttempts = ref(0)
   const maxReconnectAttempts = 5
 
@@ -143,105 +152,107 @@
   })
 
   // WebSocket connection function
-  const connectWebSocket = () => {
-    if (wsConnection.value && wsConnection.value.readyState === WebSocket.OPEN) {
-      console.log('WebSocket already connected')
+  const connectWebSocket = vehicleType => {
+    if (wsConnections[vehicleType] && wsConnections[vehicleType].readyState === WebSocket.OPEN) {
+      console.log(`WebSocket for ${vehicleType} already connected`)
       return
     }
 
     try {
-      console.log('Connecting to drone telemetry WebSocket...')
-      wsConnection.value = new WebSocket('ws://127.0.0.1:8000/vehicles/drone/ws')
+      console.log(`Connecting to ${vehicleType} telemetry WebSocket...`)
+      wsConnections[vehicleType] = new WebSocket(`ws://127.0.0.1:8000/vehicles/${vehicleType}/ws`)
 
-      wsConnection.value.onopen = () => {
-        console.log('WebSocket connection established')
-        wsConnected.value = true
+      wsConnections[vehicleType].onopen = () => {
+        console.log(`WebSocket connection for ${vehicleType} established`)
+        wsConnected[vehicleType] = true
         wsReconnectAttempts.value = 0
 
-        snackbarMessage.value = 'Connected to drone telemetry'
+        snackbarMessage.value = `Connected to ${vehicleType} telemetry`
         snackbarColor.value = 'success'
         showSnackbar.value = true
       }
 
-      wsConnection.value.onmessage = event => {
+      wsConnections[vehicleType].onmessage = event => {
         try {
           const data = JSON.parse(event.data)
 
           // Ignore ping messages
           if (data.type === 'ping') return
 
-          console.log('Received telemetry data:', data)
+          console.log(`Received ${vehicleType} telemetry data:`, data)
 
-          // Update telemetry data object
-          if (data.position) {
-            Object.assign(telemetryData.position, data.position)
-          }
-
-          if (data.velocity) {
-            Object.assign(telemetryData.velocity, data.velocity)
-          }
-
-          if (data.battery) {
-            Object.assign(telemetryData.battery, data.battery)
-          }
-
-          if (data.mission) {
-            Object.assign(telemetryData.mission, data.mission)
-          }
-
-          // Update vehicle info if provided
-          if (data.vehicle_speed !== undefined) {
-            vehicleSpeed.value = data.vehicle_speed
-          }
-          if (data.vehicle_state !== undefined) {
-            vehicleState.value = data.vehicle_state
-          }
-          if (data.vehicle_location !== undefined) {
-            vehicleLocation.value = data.vehicle_location
+          // Update telemetry data object based on vehicle type
+          if (vehicleType === 'drone') {
+            if (data.position) {
+              Object.assign(telemetryData.position, data.position)
+            }
+            if (data.velocity) {
+              Object.assign(telemetryData.velocity, data.velocity)
+            }
+            if (data.battery) {
+              Object.assign(telemetryData.battery, data.battery)
+            }
+            if (data.mission) {
+              Object.assign(telemetryData.mission, data.mission)
+            }
+          } else if (vehicleType === 'vehicle') {
+            // Handle vehicle telemetry data
+            if (data.vehicle_speed !== undefined) {
+              vehicleSpeed.value = data.vehicle_speed
+            }
+            if (data.vehicle_state !== undefined) {
+              vehicleState.value = data.vehicle_state
+            }
+            if (data.vehicle_location !== undefined) {
+              vehicleLocation.value = data.vehicle_location
+            }
           }
 
         } catch (error) {
-
-          console.error('Error processing telemetry message:', error)
+          console.error(`Error processing ${vehicleType} telemetry message:`, error)
         }
       }
 
-      wsConnection.value.onclose = event => {
-        wsConnected.value = false
-        console.log(`WebSocket connection closed: ${event.code} ${event.reason}`)
+      wsConnections[vehicleType].onclose = event => {
+        wsConnected[vehicleType] = false
+        console.log(`WebSocket connection for ${vehicleType} closed: ${event.code} ${event.reason}`)
 
-        if (missionActive.value && event.code !== 1000 && wsReconnectAttempts.value < maxReconnectAttempts) {
+        if (event.code !== 1000 && wsReconnectAttempts.value < maxReconnectAttempts) {
           const delay = Math.min(1000 * Math.pow(2, wsReconnectAttempts.value), 10000)
           wsReconnectAttempts.value++
 
-          console.log(`Attempting to reconnect in ${delay}ms`)
-          setTimeout(connectWebSocket, delay)
+          console.log(`Attempting to reconnect ${vehicleType} in ${delay}ms`)
+          setTimeout(() => connectWebSocket(vehicleType), delay)
         }
       }
 
-      wsConnection.value.onerror = error => {
-        console.error('WebSocket error:', error)
+      wsConnections[vehicleType].onerror = error => {
+        console.error(`WebSocket error for ${vehicleType}:`, error)
       }
 
     } catch (error) {
-      console.error('Error establishing WebSocket connection:', error)
-      snackbarMessage.value = `Connection error: ${error.message}`
+      console.error(`Error establishing WebSocket connection for ${vehicleType}:`, error)
+      snackbarMessage.value = `Connection error for ${vehicleType}: ${error.message}`
       snackbarColor.value = 'error'
       showSnackbar.value = true
     }
   }
 
-  const disconnectWebSocket = () => {
-    if (wsConnection.value && [WebSocket.OPEN, WebSocket.CONNECTING].includes(wsConnection.value.readyState)) {
-      console.log('Closing WebSocket connection')
-      wsConnection.value.close(1000, 'Disconnecting by user action')
-      wsConnected.value = false
+  const disconnectWebSocket = vehicleType => {
+    if (
+      wsConnections[vehicleType] &&
+      [WebSocket.OPEN, WebSocket.CONNECTING].includes(wsConnections[vehicleType].readyState)
+    ) {
+      console.log(`Closing WebSocket connection for ${vehicleType}`)
+      wsConnections[vehicleType].close(1000, `Disconnecting ${vehicleType} by user action`)
+      wsConnected[vehicleType] = false
     }
   }
 
-  const startMission = async () => {
+
+  const startMission = async vehicleType => {
     try {
-      const response = await fetch('http://localhost:8000/vehicles/drone/connect', {
+      const response = await fetch(`http://localhost:8000/vehicles/${vehicleType}/connect`, {
         method: 'POST',
         headers: {
           'Accept': 'application/json',
@@ -252,34 +263,33 @@
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.detail || 'Failed to connect to drone')
+        throw new Error(data.detail || `Failed to connect to ${vehicleType}`)
       }
 
-      // Update initial telemetry data if provided
-      if (data.position) Object.assign(telemetryData.position, data.position)
-      if (data.velocity) Object.assign(telemetryData.velocity, data.velocity)
-      if (data.battery) Object.assign(telemetryData.battery, data.battery)
-      if (data.mission) Object.assign(telemetryData.mission, data.mission)
+      // Update initial telemetry data if provided and if it's a drone
+      if (vehicleType === 'drone') {
+        if (data.position) Object.assign(telemetryData.position, data.position)
+        if (data.velocity) Object.assign(telemetryData.velocity, data.velocity)
+        if (data.battery) Object.assign(telemetryData.battery, data.battery)
+        if (data.mission) Object.assign(telemetryData.mission, data.mission)
+      }
 
-      missionActive.value = true
-      snackbarMessage.value = 'Mission started successfully'
+      snackbarMessage.value = `${vehicleType.charAt(0).toUpperCase() + vehicleType.slice(1)} connected successfully`
       snackbarColor.value = 'success'
       showSnackbar.value = true
 
-      connectWebSocket()
+      // Connect to the WebSocket for telemetry
+      connectWebSocket(vehicleType)
 
     } catch (error) {
-      console.error('Error starting mission:', error)
+      console.error(`Error connecting to ${vehicleType}:`, error)
       if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-        // This often indicates a network error like ERR_CONNECTION_REFUSED
         snackbarMessage.value = 'Connection Refused: Check if the server is running.'
-        console.log(snackbarMessage.value)
       } else {
-        snackbarMessage.value = `Error starting mission: ${error.message}`
+        snackbarMessage.value = `Error connecting to ${vehicleType}: ${error.message}`
       }
       snackbarColor.value = 'error'
       showSnackbar.value = true
-      missionActive.value = false
     }
   }
 

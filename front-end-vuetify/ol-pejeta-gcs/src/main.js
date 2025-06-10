@@ -39,12 +39,12 @@ const vuetify = createVuetify({
   icons: {
     defaultSet: 'mdi',
     sets: {
-      mdi
-    }
+      mdi,
+    },
   },
   theme: {
-    defaultTheme: 'light'
-  }
+    defaultTheme: 'light',
+  },
 })
 
 const app = createApp(App)

@@ -9,6 +9,7 @@ dependencies = [
     "pydantic-settings>=2.9.1",
     "pymavlink>=2.4.43",
     "pyside6>=6.9.0",
+    "python-multipart>=0.0.20",
     "ruff>=0.11.8",
     "uvicorn>=0.34.2",
     "websockets>=15.0.1",

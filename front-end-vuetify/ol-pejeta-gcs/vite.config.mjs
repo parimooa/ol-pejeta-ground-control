@@ -57,7 +57,7 @@ export default defineConfig({
       },
       vueTemplate: true,
     }),
-    vueDevTools()
+    vueDevTools(),
   ],
   optimizeDeps: {
     exclude: [

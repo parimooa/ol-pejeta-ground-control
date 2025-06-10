@@ -38,11 +38,22 @@
       <div v-if="telemetryData" class="telemetry-status pa-2">
         <v-chip
           :color="telemetryConnected ? 'green' : 'red'"
-          prepend-icon="mdi-satellite-variant"
+          prepend-icon="mdi-quadcopter"
           size="small"
           variant="flat"
         >
-          {{ telemetryConnected ? 'Telemetry Connected' : 'No Telemetry' }}
+          {{ telemetryConnected ? ' Drone Telemetry Connected' : 'No Drone Telemetry' }}
+        </v-chip>
+      </div>
+
+           <div v-if="telemetryData" class="telemetry-status pa-2">
+        <v-chip
+          :color="telemetryConnected ? 'green' : 'red'"
+          prepend-icon="mdi-car-connected"
+          size="small"
+          variant="flat"
+        >
+          {{ telemetryConnected ? ' Vehicle Telemetry Connected' : 'No Vehicle Telemetry' }}
         </v-chip>
       </div>
 

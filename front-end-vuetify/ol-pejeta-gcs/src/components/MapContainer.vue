@@ -109,7 +109,11 @@
   import Circle from 'ol/geom/Circle'
   import { Vector as VectorLayer } from 'ol/layer'
   import { Vector as VectorSource } from 'ol/source'
-  import { Circle as CircleStyle, Fill, Stroke, Style, Text } from 'ol/style'
+  import { Circle as CircleStyle, Fill, Icon, Stroke, Style,Text } from 'ol/style'
+
+  import droneIcon from '@/assets/drone.png'
+  import vehicleIcon from '@/assets/car.png'
+
 
   const props = defineProps({
     distance: {
@@ -229,7 +233,7 @@
 
     // Update drone position
     dronePosition.value = { x: mapCoords[0], y: mapCoords[1] }
-    vehiclePosition.value = { x: mapCoords[0] , y: mapCoords[1] }
+    vehiclePosition.value = { x: mapCoords[0], y: mapCoords[1] }
     // Disable manual control when telemetry is active
     manualControl.value = false
 
@@ -246,7 +250,7 @@
     if (!map || !vectorSource) return
 
     droneFeature.getGeometry().setCoordinates([dronePosition.value.x, dronePosition.value.y])
-    vehicleFeature.getGeometry().setCoordinates([vehiclePosition.value.x, vehiclePosition.value.y])
+    // vehicleFeature.getGeometry().setCoordinates([vehiclePosition.value.x, vehiclePosition.value.y])
 
     safetyRadiusFeature.getGeometry().setCenter([dronePosition.value.x, dronePosition.value.y])
 
@@ -281,44 +285,42 @@
           const strokeColor = telemetryConnected.value ? 'rgba(46, 204, 113, 0.5)' : 'rgba(52, 152, 219, 0.5)'
 
           return new Style({
-            image: new CircleStyle({
-              radius: 10,
-              fill: new Fill({
-                color,
-              }),
-              stroke: new Stroke({
-                color: strokeColor,
-                width: 3,
-              }),
+            image: new Icon({
+              src: droneIcon,
+              scale: 0.1,
+              anchor: [0.5, 0.5],
+              anchorXUnits: 'fraction',
+              anchorYUnits: 'fraction',
             }),
-            text: new Text({
-              text: 'D',
-              fill: new Fill({
-                color: 'white',
-              }),
-              font: 'bold 12px sans-serif',
+            // Optional: Add a circle behind the icon for better visibility
+            stroke: new Stroke({
+              color: strokeColor,
+              width: 3,
+            }),
+            fill: new Fill({
+              color,
             }),
           })
-        } else if (type === 'vehicle') {
+
+        } else if (type === 'car') {
           return new Style({
-            image: new CircleStyle({
-              radius: 8,
-              fill: new Fill({
-                color: '#e74c3c',
-              }),
-              stroke: new Stroke({
-                color: 'rgba(231, 76, 60, 0.5)',
-                width: 3,
-              }),
+            image: new Icon({
+              src: vehicleIcon,
+              scale: 0.08,
+              anchor: [0.5, 0.5],
+              anchorXUnits: 'fraction',
+              anchorYUnits: 'fraction',
             }),
-            text: new Text({
-              text: 'V',
-              fill: new Fill({
-                color: 'white',
-              }),
-              font: 'bold 12px sans-serif',
+            // Optional: Add a circle behind the icon for better visibility
+            stroke: new Stroke({
+              color: 'rgba(231, 76, 60, 0.5)',
+              width: 3,
+            }),
+            fill: new Fill({
+              color: '#e74c3c',
             }),
           })
+
         } else if (type === 'safety-radius') {
           return new Style({
             stroke: new Stroke({
@@ -326,6 +328,7 @@
               width: 2,
               lineDash: [5, 5],
             }),
+
             fill: new Fill({
               color: 'rgba(230, 126, 34, 0.1)',
             }),

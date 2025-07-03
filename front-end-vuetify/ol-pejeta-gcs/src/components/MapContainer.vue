@@ -35,25 +35,25 @@
       </div>
 
       <!-- Telemetry status indicator -->
-      <div v-if="telemetryData" class="telemetry-status pa-2">
+      <div v-if="droneTelemetryData" class="telemetry-status pa-2">
         <v-chip
-          :color="telemetryConnected ? 'green' : 'red'"
+          :color="droneTelemetryConnected ? 'green' : 'red'"
           prepend-icon="mdi-quadcopter"
           size="small"
           variant="flat"
         >
-          {{ telemetryConnected ? ' Drone Telemetry Connected' : 'No Drone Telemetry' }}
+          {{ droneTelemetryConnected ? ' Drone Telemetry Connected' : 'No Drone Telemetry' }}
         </v-chip>
       </div>
 
-      <div v-if="telemetryData" class="telemetry-status pa-2">
+      <div v-if="vehicleTelemetryData" class="telemetry-status pa-2">
         <v-chip
-          :color="telemetryConnected ? 'green' : 'red'"
+          :color="vehicleTelemetryConnected ? 'green' : 'red'"
           prepend-icon="mdi-car-connected"
           size="small"
           variant="flat"
         >
-          {{ telemetryConnected ? ' Vehicle Telemetry Connected' : 'No Vehicle Telemetry' }}
+          {{ vehicleTelemetryConnected ? ' Vehicle Telemetry Connected' : 'No Vehicle Telemetry' }}
         </v-chip>
       </div>
 
@@ -120,7 +120,11 @@
       type: Number,
       required: true,
     },
-    telemetryData: {
+    droneTelemetryData: {
+      type: Object,
+      default: null,
+    },
+    vehicleTelemetryData: {
       type: Object,
       default: null,
     },
@@ -158,10 +162,15 @@
   const mapType = ref('osm') // 'osm', 'satellite', or 'hybrid'
 
   // Computed property to check if telemetry is connected
-  const telemetryConnected = computed(() => {
-    return props.telemetryData &&
-      props.telemetryData.position.latitude &&
-      props.telemetryData.position.longitude
+  const droneTelemetryConnected = computed(() => {
+    return props.droneTelemetryData &&
+      props.droneTelemetryData.position.latitude &&
+      props.droneTelemetryData.position.longitude
+  })
+  const vehicleTelemetryConnected = computed(() => {
+    return props.vehicleTelemetryData &&
+      props.vehicleTelemetryData.position.latitude &&
+      props.vehicleTelemetryData.position.longitude
   })
 
   // Add button handlers
@@ -224,28 +233,42 @@
 
   // Function to update drone position from telemetry data
   const updateDroneFromTelemetry = () => {
-    if (!props.telemetryData || !telemetryConnected.value || !droneFeature) {
+    if (!props.droneTelemetryData || !droneTelemetryConnected.value || !droneFeature) {
       return
     }
 
-    const { latitude, longitude } = props.telemetryData.position
+    const { latitude, longitude } = props.droneTelemetryData.position
     const mapCoords = gpsToMapCoordinates(latitude, longitude)
 
     // Update drone position
     dronePosition.value = { x: mapCoords[0], y: mapCoords[1] }
-    vehiclePosition.value = { x: mapCoords[0], y: mapCoords[1] }
-    // Disable manual control when telemetry is active
-    manualControl.value = false
 
     // Update map features
     updateMapFeatures()
 
     // Emit position update
     emit('update:drone-position', dronePosition.value)
-    emit('update:vehicle-position', vehiclePosition.value)
     console.log(`Drone position updated from telemetry: ${latitude}, ${longitude}`)
   }
+  // Function to update vehicle position from telemetry data
+  const updateVehicleFromTelemetry = () => {
+    if (!props.vehicleTelemetryData || !vehicleTelemetryConnected.value || !vehicleFeature) {
+      return
+    }
 
+    const { latitude, longitude } = props.vehicleTelemetryData.position
+    const mapCoords = gpsToMapCoordinates(latitude, longitude)
+
+    // Update vehicle position
+    vehiclePosition.value = { x: mapCoords[0], y: mapCoords[1] }
+
+    // Update map features
+    updateMapFeatures()
+
+    // Emit position update
+    emit('update:vehicle-position', vehiclePosition.value)
+    console.log(`Vehicle position updated from telemetry: ${latitude}, ${longitude}`)
+  }
   const updateMapFeatures = () => {
     if (!map || !vectorSource) return
 
@@ -281,8 +304,8 @@
 
         if (type === 'drone') {
           // Different styling based on telemetry connection
-          const color = telemetryConnected.value ? '#2ecc71' : '#3498db'
-          const strokeColor = telemetryConnected.value ? 'rgba(46, 204, 113, 0.5)' : 'rgba(52, 152, 219, 0.5)'
+          const color = droneTelemetryConnected.value ? '#2ecc71' : '#3498db'
+          const strokeColor = droneTelemetryConnected.value ? 'rgba(46, 204, 113, 0.5)' : 'rgba(52, 152, 219, 0.5)'
 
           return new Style({
             image: new Icon({
@@ -456,7 +479,7 @@
     let selectedFeature = null
 
     map.on('pointermove', function (e) {
-      if (selectedFeature && manualControl.value) {
+      if (selectedFeature && isManualControlEnabled.value) {
         const coords = e.coordinate
         if (selectedFeature === droneFeature) {
           dronePosition.value = { x: coords[0], y: coords[1] }
@@ -470,7 +493,7 @@
     })
 
     map.on('pointerdown', function (e) {
-      if (manualControl.value) {
+      if (isManualControlEnabled.value) {
         map.forEachFeatureAtPixel(e.pixel, function (feature) {
           if (feature === droneFeature || feature === vehicleFeature) {
             selectedFeature = feature
@@ -498,12 +521,30 @@
     updateMapFeatures()
   }
 
-  // Watch for telemetry data changes
-  watch(() => props.telemetryData, newTelemetry => {
+  watch(() => props.droneTelemetryData, newTelemetry => {
     if (newTelemetry && newTelemetry.position.latitude && newTelemetry.position.longitude) {
       updateDroneFromTelemetry()
+      // Disable manual control when drone telemetry is active
+      if (droneTelemetryConnected.value) {
+        manualControl.value = false
+      }
     }
   }, { deep: true })
+
+  watch(() => props.vehicleTelemetryData, newTelemetry => {
+    if (newTelemetry && newTelemetry.position.latitude && newTelemetry.position.longitude) {
+      updateVehicleFromTelemetry()
+      // Disable manual control when vehicle telemetry is active
+      if (vehicleTelemetryConnected.value) {
+        manualControl.value = false
+      }
+    }
+  }, { deep: true })
+
+  // Updated manual control computed property
+  const isManualControlEnabled = computed(() => {
+    return manualControl.value && !droneTelemetryConnected.value && !vehicleTelemetryConnected.value
+  })
 
   // Watch for changes in distance prop
   watch(() => props.distance, () => {

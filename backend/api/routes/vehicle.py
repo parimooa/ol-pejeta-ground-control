@@ -1,3 +1,5 @@
+import os
+
 from fastapi import (
     APIRouter,
     HTTPException,
@@ -103,8 +105,8 @@ async def websocket_endpoint(websocket: WebSocket, vehicle_type: str):
 async def upload_mission(
     vehicle_type: str, mission_file: UploadFile = File(...)
 ) -> Dict[str, Any]:
-    """Upload a mission file to the vehicle.
-
+    """
+     Upload a mission file to the vehicle.
     This endpoint accepts a waypoints file and uploads it to the vehicle.
     """
     # Create a temporary file to store the uploaded content

@@ -46,7 +46,7 @@ class Vehicle:
         )
 
         print("Waiting for heartbeat...")
-        self.vehicle.wait_heartbeat()
+        self.vehicle.wait_heartbeat(timeout=10)
         print(
             f"Connected to system {self.vehicle.target_system} component {self.vehicle.target_component}"
         )

@@ -88,7 +88,7 @@ class VehicleService:
 
         self.telemetry_callbacks[vehicle_type].append(callback)
 
-        # If vehicle is already connected, start telemetry
+        # If the vehicle is already connected, start telemetry
         vehicle = self.get_vehicle(vehicle_type)
         if vehicle and vehicle.vehicle:
             vehicle.start_telemetry_stream(

@@ -23,10 +23,10 @@ class TelemetryWebsocketManager:
         """Set the event loop reference."""
         print(f"TelemetryWebsocketManager: set_event_loop called with {loop}")
         self.loop = loop
-        self._loop_set.set()  # Signal that loop is now available
+        self._loop_set.set()
         print(f"TelemetryWebsocketManager: Event loop set successfully")
 
-        # Process any pending telemetry
+        # Process pending telemetry
         pending_count = len(self._pending_telemetry)
         if pending_count > 0:
             print(f"Processing {pending_count} pending telemetry messages")

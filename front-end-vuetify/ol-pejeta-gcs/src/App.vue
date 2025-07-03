@@ -23,7 +23,7 @@
       :mission-steps="missionSteps"
       :status="status"
       :status-color="statusColor"
-      :telemetry-data="telemetryData"
+      :telemetry-data="droneData"
       :vehicle-location="vehicleLocation"
       :vehicle-speed="vehicleSpeed"
       :vehicle-state="vehicleState"
@@ -34,7 +34,8 @@
         <MapContainer
           class="flex-grow-1"
           :distance="distance"
-          :telemetry-data="telemetryData"
+          :drone-telemetry-data="droneData"
+          :vehicle-telemetry-data="vehicleData"
           @emergency-stop="emergencyStop"
           @start-mission="startMission"
         />
@@ -68,7 +69,33 @@
 
 
   // Reactive telemetry data object matching your API structure
-  const telemetryData = reactive({
+  const droneData = reactive({
+    position: {
+      latitude: null,
+      longitude: null,
+      altitude_msl: 0,
+      relative_altitude: 0,
+    },
+    velocity: {
+      vx: 0,
+      vy: 0,
+      vz: 0,
+      ground_speed: 0,
+      heading: 0,
+    },
+    battery: {
+      voltage: 0,
+      remaining_percentage: 100,
+    },
+    mission: {
+      current_wp_seq: 0,
+      next_wp_seq: 1,
+      distance_to_wp: 0,
+      progress_percentage: 0,
+    },
+  })
+
+    const vehicleData = reactive({
     position: {
       latitude: null,
       longitude: null,
@@ -184,27 +211,30 @@
           // Update telemetry data object based on vehicle type
           if (vehicleType === 'drone') {
             if (data.position) {
-              Object.assign(telemetryData.position, data.position)
+              Object.assign(droneData.position, data.position)
             }
             if (data.velocity) {
-              Object.assign(telemetryData.velocity, data.velocity)
+              Object.assign(droneData.velocity, data.velocity)
             }
             if (data.battery) {
-              Object.assign(telemetryData.battery, data.battery)
+              Object.assign(droneData.battery, data.battery)
             }
             if (data.mission) {
-              Object.assign(telemetryData.mission, data.mission)
+              Object.assign(droneData.mission, data.mission)
             }
-          } else if (vehicleType === 'vehicle') {
+          } else if (vehicleType === 'car') {
             // Handle vehicle telemetry data
-            if (data.vehicle_speed !== undefined) {
-              vehicleSpeed.value = data.vehicle_speed
+            if (data.position) {
+              Object.assign(vehicleData.position, data.position)
             }
-            if (data.vehicle_state !== undefined) {
-              vehicleState.value = data.vehicle_state
+            if (data.velocity) {
+              Object.assign(vehicleData.velocity, data.velocity)
             }
-            if (data.vehicle_location !== undefined) {
-              vehicleLocation.value = data.vehicle_location
+            if (data.battery) {
+              Object.assign(vehicleData.battery, data.battery)
+            }
+            if (data.mission) {
+              Object.assign(vehicleData.mission, data.mission)
             }
           }
 
@@ -251,6 +281,7 @@
 
 
   const startMission = async vehicleType => {
+    console.log('Calling start mission'+vehicleType)
     try {
       const response = await fetch(`http://localhost:8000/vehicles/${vehicleType}/connect`, {
         method: 'POST',
@@ -268,10 +299,10 @@
 
       // Update initial telemetry data if provided and if it's a drone
       if (vehicleType === 'drone') {
-        if (data.position) Object.assign(telemetryData.position, data.position)
-        if (data.velocity) Object.assign(telemetryData.velocity, data.velocity)
-        if (data.battery) Object.assign(telemetryData.battery, data.battery)
-        if (data.mission) Object.assign(telemetryData.mission, data.mission)
+        if (data.position) Object.assign(droneData.position, data.position)
+        if (data.velocity) Object.assign(droneData.velocity, data.velocity)
+        if (data.battery) Object.assign(droneData.battery, data.battery)
+        if (data.mission) Object.assign(droneData.mission, data.mission)
       }
 
       snackbarMessage.value = `${vehicleType.charAt(0).toUpperCase() + vehicleType.slice(1)} connected successfully`

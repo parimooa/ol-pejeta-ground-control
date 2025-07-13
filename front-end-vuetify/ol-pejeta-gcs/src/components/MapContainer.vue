@@ -112,7 +112,7 @@
   import { Circle as CircleStyle, Fill, Icon, Stroke, Style,Text } from 'ol/style'
 
   import droneIcon from '@/assets/drone.png'
-  import vehicleIcon from '@/assets/car.png'
+  import vehicleIcon from '@/assets/car_top_view.png'
 
 
   const props = defineProps({
@@ -250,6 +250,7 @@
     emit('update:drone-position', dronePosition.value)
     console.log(`Drone position updated from telemetry: ${latitude}, ${longitude}`)
   }
+
   // Function to update vehicle position from telemetry data
   const updateVehicleFromTelemetry = () => {
     if (!props.vehicleTelemetryData || !vehicleTelemetryConnected.value || !vehicleFeature) {
@@ -257,23 +258,33 @@
     }
 
     const { latitude, longitude } = props.vehicleTelemetryData.position
+    const heading = props.vehicleTelemetryData.velocity.heading
     const mapCoords = gpsToMapCoordinates(latitude, longitude)
 
     // Update vehicle position
     vehiclePosition.value = { x: mapCoords[0], y: mapCoords[1] }
 
-    // Update map features
+    // Update the vehicle feature with new coordinates
+    vehicleFeature.getGeometry().setCoordinates([vehiclePosition.value.x, vehiclePosition.value.y])
+
+    // Set the heading property on the feature for the style function to use
+    if (heading !== undefined) {
+      vehicleFeature.set('heading', heading)
+    }
+
+    // Update map features (but remove the problematic setStyle() call)
     updateMapFeatures()
 
     // Emit position update
     emit('update:vehicle-position', vehiclePosition.value)
-    console.log(`Vehicle position updated from telemetry: ${latitude}, ${longitude}`)
+    console.log(`Vehicle position updated from telemetry: ${latitude}, ${longitude}, heading: ${heading}`)
   }
+
   const updateMapFeatures = () => {
     if (!map || !vectorSource) return
 
     droneFeature.getGeometry().setCoordinates([dronePosition.value.x, dronePosition.value.y])
-    // vehicleFeature.getGeometry().setCoordinates([vehiclePosition.value.x, vehiclePosition.value.y])
+    vehicleFeature.getGeometry().setCoordinates([vehiclePosition.value.x, vehiclePosition.value.y])
 
     safetyRadiusFeature.getGeometry().setCenter([dronePosition.value.x, dronePosition.value.y])
 
@@ -326,13 +337,17 @@
           })
 
         } else if (type === 'car') {
+           const heading = feature.get('heading') || 0
+          const headingInRadians = (heading *  Math.PI) / 180
           return new Style({
             image: new Icon({
               src: vehicleIcon,
-              scale: 0.08,
+              scale: 0.06,
               anchor: [0.5, 0.5],
               anchorXUnits: 'fraction',
               anchorYUnits: 'fraction',
+              rotateWithView: true,
+              rotation: headingInRadians,
             }),
             // Optional: Add a circle behind the icon for better visibility
             stroke: new Stroke({

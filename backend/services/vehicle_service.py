@@ -38,6 +38,7 @@ class VehicleService:
                 ip=settings.get("connection", "127.0.0.1"),
                 port=settings.get("port", "14551"),
                 protocol=settings.get("protocol", "udp"),
+                baud_rate=settings.get("baud_rate", None),
             )
 
             self.vehicles[vehicle_type] = vehicle

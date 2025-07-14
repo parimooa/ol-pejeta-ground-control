@@ -1,6 +1,7 @@
 from typing import Dict, List, Any, Optional
 import os
 from pydantic import BaseModel, Field
+from settings import vehicle_settings
 
 
 class HomeLocation(BaseModel):
@@ -14,6 +15,7 @@ class VehicleConfig(BaseModel):
     connection: str
     port: str
     protocol: str
+    baud_rate: Optional[str] = None
     home_location: Optional[HomeLocation] = None
 
 
@@ -35,8 +37,6 @@ def get_vehicle_settings() -> List[Dict[str, Any]]:
     Get vehicle settings from settings.py or use defaults.
     """
     try:
-        from settings import vehicle_settings
-
         return vehicle_settings
     except ImportError:
         print(

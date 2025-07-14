@@ -9,7 +9,14 @@ from backend.core.flight_modes import FlightMode
 
 
 class Vehicle:
-    def __init__(self, vehicle_type: str, ip: str, port: str, protocol: str):
+    def __init__(
+        self,
+        vehicle_type: str,
+        ip: str,
+        port: str,
+        protocol: str,
+        baud_rate: int = None,
+    ):
         """
         Initialize a Vehicle instance.
 
@@ -22,14 +29,22 @@ class Vehicle:
         self.vehicle_type = vehicle_type
         self.device = ip
         self.port = port
+        self.baud_rate = baud_rate
         self.protocol = protocol
-        self.connection_string = f"{protocol}:{ip}:{port}"
+        self.connection_string = None
         self.vehicle = None
         self.mission_total_waypoints = 0
         self._heartbeat_thread = None
         self._telemetry_thread = None
         self._telemetry_callback = None
+        self.build_connection_string()
         self._stop_threads = threading.Event()
+
+    def build_connection_string(self):
+        if self.protocol == "serial":
+            self.connection_string = f"{self.port},{self.baud_rate}"
+        else:
+            self.connection_string = f"{self.protocol}:{self.device}:{self.port}"
 
     def __repr__(self):
         return (

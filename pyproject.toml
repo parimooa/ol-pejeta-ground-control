@@ -8,6 +8,7 @@ dependencies = [
     "fastapi>=0.115.12",
     "pydantic-settings>=2.9.1",
     "pymavlink>=2.4.43",
+    "pyserial>=3.5",
     "pyside6>=6.9.0",
     "python-multipart>=0.0.20",
     "ruff>=0.11.8",

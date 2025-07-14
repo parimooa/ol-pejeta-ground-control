@@ -4,11 +4,8 @@ from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 from backend.services.vehicle_service import vehicle_service
 
-from backend.api.routes import vehicle
+from backend.api.routes import vehicle, survey
 from backend.api.websockets.telemetry import telemetry_manager
-
-# Import telemetry manager at module level
-
 
 app = FastAPI(
     title="Drone Control API",
@@ -27,6 +24,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(vehicle.router)
+app.include_router(survey.router)
 
 
 @app.get("/")
@@ -100,4 +98,4 @@ async def debug_telemetry_status():
 
 
 if __name__ == "__main__":
-    uvicorn.run("backend.main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

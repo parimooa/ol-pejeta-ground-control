@@ -342,7 +342,7 @@
           return new Style({
             image: new Icon({
               src: vehicleIcon,
-              scale: 0.06,
+              scale: 0.07,
               anchor: [0.5, 0.5],
               anchorXUnits: 'fraction',
               anchorYUnits: 'fraction',

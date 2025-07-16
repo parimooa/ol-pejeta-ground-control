@@ -78,6 +78,9 @@ class Vehicle:
         self._heartbeat_thread.daemon = True
         self._heartbeat_thread.start()
 
+        # Fetch the mission count to sync state
+        self.fetch_mission_count()
+
         return self.vehicle
 
     def _heartbeat_loop(self):
@@ -120,6 +123,30 @@ class Vehicle:
             print("Vehicle disconnected.")
         else:
             print("No vehicle connected to disconnect.")
+
+    def fetch_mission_count(self):
+        """Requests the mission waypoint count from the vehicle to sync state."""
+        if not self.vehicle:
+            return
+
+        print("Requesting mission count from vehicle...")
+        try:
+            self.vehicle.mav.mission_request_list_send(
+                self.vehicle.target_system, self.vehicle.target_component
+            )
+
+            msg = self.vehicle.recv_match(
+                type="MISSION_COUNT", blocking=True, timeout=3
+            )
+            if msg:
+                self.mission_total_waypoints = msg.count
+                print(
+                    f"Vehicle has {self.mission_total_waypoints} waypoints in its mission."
+                )
+            else:
+                print("Did not receive mission count from vehicle (timeout).")
+        except Exception as e:
+            print(f"Error fetching mission count: {e}")
 
     def set_mode(self, mode_id: FlightMode) -> bool:
         """Set the flight mode of the vehicle."""
@@ -256,6 +283,18 @@ class Vehicle:
 
                 elif msg_type == "MISSION_CURRENT":
                     telemetry["current_mission_wp_seq"] = msg.seq
+                    # Self-healing: If the current waypoint from the vehicle is out of bounds
+                    # with our known total, it means the mission has changed externally.
+                    # We need to re-fetch the mission count to re-sync.
+                    if (
+                        self.mission_total_waypoints > 0
+                        and msg.seq >= self.mission_total_waypoints
+                    ):
+                        print(
+                            f"Mission inconsistency detected (seq {msg.seq} >= total {self.mission_total_waypoints}). Re-syncing."
+                        )
+                        self.fetch_mission_count()
+
                     if self.mission_total_waypoints > 0:
                         current_seq = msg.seq
                         if current_seq < (self.mission_total_waypoints - 1):
@@ -279,15 +318,15 @@ class Vehicle:
 
                 # If we've reached the last waypoint, progress is 100%
                 if current_seq >= total_wps - 1:
-                    telemetry["mission_progress_percentage"] = 100.0
+                    telemetry["mission_progress_percentage"] = 100
                 else:
                     # Calculate progress as percentage of completed waypoints
                     progress = (float(current_seq) / (total_wps - 1)) * 100.0
-                    telemetry["mission_progress_percentage"] = max(
-                        0.0, min(progress, 100.0)
+                    telemetry["mission_progress_percentage"] = round(
+                        max(0.0, min(progress, 100.0))
                     )
             elif self.mission_total_waypoints <= 1:
-                telemetry["mission_progress_percentage"] = 0.0
+                telemetry["mission_progress_percentage"] = 0
 
         except Exception as e:
             print(f"Error getting position data: {e}")

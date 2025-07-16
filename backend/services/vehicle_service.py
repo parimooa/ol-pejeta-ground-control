@@ -160,6 +160,9 @@ class VehicleService:
                 print(f"Error: Waypoint file '{waypoints_file}' not found.")
                 return False
 
+            # Set the total waypoints on the vehicle instance so it can calculate progress
+            vehicle.mission_total_waypoints = mission_total_waypoints
+
             if mission_total_waypoints == 0:
                 print(f"No waypoints found in '{waypoints_file}'")
                 return False

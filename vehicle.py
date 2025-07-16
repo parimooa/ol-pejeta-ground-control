@@ -564,16 +564,8 @@ class Vehicle:
             print("Vehicle not connected. Cannot get position data.")
             return telemetry
 
-        # Step 1: Request specific data streams with higher rates for navigation data
-        stream_rate_hz = 10  # Higher rate for better responsiveness
-
-        self.vehicle.mav.request_data_stream_send(
-            self.vehicle.target_system,
-            self.vehicle.target_component,
-            mavutil.mavlink.MAV_DATA_STREAM_POSITION,
-            stream_rate_hz,
-            1,
-        )
+        # Request essential data streams. In a real GCS, this is often done once on connect.
+        stream_rate_hz = 4  # A reasonable rate for polling
         self.vehicle.mav.request_data_stream_send(
             self.vehicle.target_system,
             self.vehicle.target_component,
@@ -588,63 +580,17 @@ class Vehicle:
             stream_rate_hz,
             1,
         )  # VFR_HUD
-        self.vehicle.mav.request_data_stream_send(
-            self.vehicle.target_system,
-            self.vehicle.target_component,
-            mavutil.mavlink.MAV_DATA_STREAM_EXTRA2,
-            stream_rate_hz,
-            1,
-        )  # Mission data
-
-        # Step 2: Request the current mission item information
-        # Use command_long_send with MAV_CMD_REQUEST_MESSAGE instead of non-existent mission_request_current_send
-        self.vehicle.mav.command_long_send(
-            self.vehicle.target_system,
-            self.vehicle.target_component,
-            mavutil.mavlink.MAV_CMD_REQUEST_MESSAGE,
-            0,  # confirmation
-            mavutil.mavlink.MAVLINK_MSG_ID_MISSION_CURRENT,  # param1: message ID to request
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,  # unused parameters
-        )
-
-        # Step 3: Directly request NAV_CONTROLLER_OUTPUT for accurate distance
-        self.vehicle.mav.command_long_send(
-            self.vehicle.target_system,
-            self.vehicle.target_component,
-            mavutil.mavlink.MAV_CMD_REQUEST_MESSAGE,
-            0,
-            mavutil.mavlink.MAVLINK_MSG_ID_NAV_CONTROLLER_OUTPUT,  # param1: message ID
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,  # unused parameters
-        )
 
         try:
             # Wait and collect all relevant messages
             start_fetch_time = time.time()
-            fetch_timeout = 0.5  # shorter timeout for responsiveness
-
-            got_global_pos = False
-            got_sys_status = False
-            got_mission_current = False
-            got_nav_controller = False
-            got_vfr_hud = False
+            fetch_timeout = 0.2  # Shorter timeout is fine for polling basic telemetry
 
             while time.time() - start_fetch_time < fetch_timeout:
                 msg = self.vehicle.recv_match(
                     type=[
                         "GLOBAL_POSITION_INT",
                         "SYS_STATUS",
-                        "MISSION_CURRENT",
-                        "NAV_CONTROLLER_OUTPUT",
                         "VFR_HUD",
                     ],
                     blocking=False,
@@ -652,10 +598,7 @@ class Vehicle:
                 )
 
                 if not msg:
-                    # If we have all essential data, we can break early
-                    if got_global_pos and got_mission_current and got_nav_controller:
-                        break
-                    time.sleep(0.01)
+                    time.sleep(0.01)  # Don't busy-wait
                     continue
 
                 msg_type = msg.get_type()
@@ -665,11 +608,6 @@ class Vehicle:
                     telemetry["longitude"] = msg.lon / 1e7
                     telemetry["altitude_msl"] = msg.alt / 1000.0
                     telemetry["relative_altitude"] = msg.relative_alt / 1000.0
-                    telemetry["vx"] = msg.vx / 100.0  # cm/s to m/s
-                    telemetry["vy"] = msg.vy / 100.0  # cm/s to m/s
-                    telemetry["vz"] = msg.vz / 100.0  # cm/s to m/s
-                    telemetry["heading"] = msg.hdg / 100.0 if msg.hdg != 65535 else None
-                    got_global_pos = True
 
                 elif msg_type == "SYS_STATUS":
                     telemetry["battery_voltage"] = (
@@ -678,74 +616,10 @@ class Vehicle:
                     telemetry["battery_remaining_percentage"] = (
                         msg.battery_remaining
                     )  # Percentage
-                    got_sys_status = True
-
-                elif msg_type == "MISSION_CURRENT":
-                    telemetry["current_mission_wp_seq"] = msg.seq
-                    if self.mission_total_waypoints > 0:
-                        current_seq = msg.seq
-                        if current_seq < (self.mission_total_waypoints - 1):
-                            telemetry["next_mission_wp_seq"] = current_seq + 1
-                    got_mission_current = True
-
-                elif msg_type == "NAV_CONTROLLER_OUTPUT":
-                    telemetry["distance_to_mission_wp"] = msg.wp_dist  # In meters
-                    telemetry["target_bearing"] = msg.target_bearing  # In degrees
-                    telemetry["nav_roll"] = msg.nav_roll  # In degrees
-                    telemetry["nav_pitch"] = msg.nav_pitch  # In degrees
-                    got_nav_controller = True
 
                 elif msg_type == "VFR_HUD":
-                    # VFR_HUD contains additional useful information
-                    telemetry["airspeed"] = msg.airspeed  # m/s
                     telemetry["ground_speed"] = msg.groundspeed  # m/s
                     telemetry["heading"] = msg.heading  # degrees
-                    telemetry["throttle"] = msg.throttle  # percentage
-                    telemetry["climb_rate"] = msg.climb  # m/s
-                    # VFR_HUD alt is useful as a backup
-                    if telemetry["relative_altitude"] is None:
-                        telemetry["relative_altitude"] = msg.alt
-                    got_vfr_hud = True
-
-            # If we didn't get NAV_CONTROLLER_OUTPUT but have position, fallback to distance calculation
-            if not got_nav_controller and got_mission_current and got_global_pos:
-                # We need to request the current waypoint position for calculation
-                if telemetry["current_mission_wp_seq"] is not None:
-                    wp_seq = telemetry["current_mission_wp_seq"]
-                    wp_pos = self.get_waypoint_position(wp_seq)
-
-                    if wp_pos and wp_pos.get("latitude") is not None:
-                        # Calculate distance using Haversine formula
-                        distance = self.calculate_distance(
-                            telemetry["latitude"],
-                            telemetry["longitude"],
-                            wp_pos["latitude"],
-                            wp_pos["longitude"],
-                        )
-                        telemetry["distance_to_mission_wp"] = distance
-                        telemetry["distance_calculation_method"] = (
-                            "haversine"  # For debugging
-                        )
-
-            # Calculate mission progress percentage
-            if (
-                self.mission_total_waypoints > 1
-                and telemetry["current_mission_wp_seq"] is not None
-            ):
-                current_seq = telemetry["current_mission_wp_seq"]
-                total_wps = self.mission_total_waypoints
-
-                # If we've reached the last waypoint, progress is 100%
-                if current_seq >= total_wps - 1:
-                    telemetry["mission_progress_percentage"] = 100.0
-                else:
-                    # Calculate progress as percentage of completed waypoints
-                    progress = (float(current_seq) / (total_wps - 1)) * 100.0
-                    telemetry["mission_progress_percentage"] = max(
-                        0.0, min(progress, 100.0)
-                    )
-            elif self.mission_total_waypoints <= 1:
-                telemetry["mission_progress_percentage"] = 0.0
 
         except Exception as e:
             print(f"Error getting position data: {e}")

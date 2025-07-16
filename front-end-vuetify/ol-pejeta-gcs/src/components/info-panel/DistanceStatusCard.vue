@@ -11,7 +11,7 @@
       </div>
       <div class="d-flex justify-space-between mb-2">
         <span>Minimum Safe Distance:</span>
-        <span class="font-weight-bold">100m</span>
+        <span class="font-weight-bold">500m</span>
       </div>
       <div class="d-flex justify-space-between">
         <span>Status:</span>

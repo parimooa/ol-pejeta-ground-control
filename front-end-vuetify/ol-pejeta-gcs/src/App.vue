@@ -55,7 +55,7 @@
 </template>
 
 <script setup>
-  import { computed, onBeforeUnmount, reactive, ref } from 'vue'
+  import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
   import InfoPanel from './components/InfoPanel.vue'
   import MapContainer from './components/MapContainer.vue'
 
@@ -122,8 +122,7 @@
   })
 
   // Other app state
-  const distance = ref(100)
-  const status = ref('SAFE')
+  const distance = ref(0)
   const missionActive = ref(false)
   const showSnackbar = ref(false)
   const snackbarMessage = ref('')
@@ -145,10 +144,18 @@
   const wsReconnectAttempts = ref(0)
   const maxReconnectAttempts = 5
 
-  // Vehicle info (you might want to move this to telemetryData if it comes from API)
-  const vehicleSpeed = ref(0)
-  const vehicleState = ref('Parked')
-  const vehicleLocation = ref('Site Alpha')
+  // Vehicle info derived from telemetry data
+  const vehicleSpeed = computed(() => {
+    // Ground speed from telemetry is in m/s. Default to 0 if not available.
+    return vehicleData.velocity.ground_speed.toFixed(2) ?? 0
+  })
+
+  const vehicleState = computed(() => {
+    // Use a small threshold (e.g., 0.1 m/s) to account for GPS drift or minor fluctuations.
+    return (vehicleData.velocity.ground_speed ?? 0) > 0.1 ? 'Moving' : 'Parked'
+  })
+
+  const vehicleLocation = ref('Site Ol Pejeta')
 
   // Instructions and mission steps
   const instructions = ref('Vehicle position is currently safe. Maintain current position during drone operation.')
@@ -160,23 +167,71 @@
   ])
 
   // Computed properties
+  const status = computed(() => {
+    if (distance.value > 500) return 'DANGER'
+    if (distance.value > 490) return 'WARNING'
+    return 'SAFE'
+  })
+
   const statusColor = computed(() => {
-    if (distance.value > 100) {
-      return { dot: 'bg-success', text: 'text-success', bg: 'bg-success-subtle' }
-    } else if (distance.value > 50) {
-      return { dot: 'bg-warning', text: 'text-warning', bg: 'bg-warning-subtle' }
-    } else {
-      return { dot: 'bg-error', text: 'text-error', bg: 'bg-error-subtle' }
+    switch (status.value) {
+      case 'DANGER':
+        return { dot: 'bg-error', text: 'text-error', bg: 'bg-error-subtle' }
+      case 'WARNING':
+        return { dot: 'bg-warning', text: 'text-warning', bg: 'bg-warning-subtle' }
+      default: // SAFE
+        return { dot: 'bg-success', text: 'text-success', bg: 'bg-success-subtle' }
     }
   })
 
   const instructionCard = computed(() => {
-    if (distance.value > 100) {
+    if (status.value !== 'DANGER') {
       return { color: '', variant: 'flat', border: false }
     } else {
       return { color: 'error-subtle', variant: 'flat', border: 'start' }
     }
   })
+
+  // Function to calculate distance between two GPS coordinates
+  const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371000 // Earth's radius in meters
+    const toRad = value => (value * Math.PI) / 180
+
+    const dLat = toRad(lat2 - lat1)
+    const dLon = toRad(lon2 - lon1)
+    const lat1Rad = toRad(lat1)
+    const lat2Rad = toRad(lat2)
+
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1Rad) * Math.cos(lat2Rad)
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    return R * c
+  }
+
+  // Watch for changes in drone or vehicle position to update distance
+  watch(
+    [() => droneData.position, () => vehicleData.position],
+    ([dronePos, vehiclePos]) => {
+      if (
+        dronePos &&
+        dronePos.latitude !== null &&
+        dronePos.longitude !== null &&
+        vehiclePos &&
+        vehiclePos.latitude !== null &&
+        vehiclePos.longitude !== null
+      ) {
+        const newDistance = calculateDistance(
+          dronePos.latitude,
+          dronePos.longitude,
+          vehiclePos.latitude,
+          vehiclePos.longitude,
+        )
+        distance.value = Math.round(newDistance)
+      }
+    },
+    { deep: true },
+  )
 
   // WebSocket connection function
   const connectWebSocket = vehicleType => {
@@ -297,12 +352,17 @@
         throw new Error(data.detail || `Failed to connect to ${vehicleType}`)
       }
 
-      // Update initial telemetry data if provided and if it's a drone
+      // Update initial telemetry data from the connect response for the specific vehicle
       if (vehicleType === 'drone') {
         if (data.position) Object.assign(droneData.position, data.position)
         if (data.velocity) Object.assign(droneData.velocity, data.velocity)
         if (data.battery) Object.assign(droneData.battery, data.battery)
         if (data.mission) Object.assign(droneData.mission, data.mission)
+      } else if (vehicleType === 'car') {
+        if (data.position) Object.assign(vehicleData.position, data.position)
+        if (data.velocity) Object.assign(vehicleData.velocity, data.velocity)
+        if (data.battery) Object.assign(vehicleData.battery, data.battery)
+        if (data.mission) Object.assign(vehicleData.mission, data.mission)
       }
 
       snackbarMessage.value = `${vehicleType.charAt(0).toUpperCase() + vehicleType.slice(1)} connected successfully`

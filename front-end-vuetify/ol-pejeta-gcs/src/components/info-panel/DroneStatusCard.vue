@@ -175,30 +175,37 @@
   })
 
   // Computed properties for display data with progress bars
+ // Computed properties for display data with progress bars
   const droneTelemetryDisplay = computed(() => [
     {
-      value: `${props.telemetryData.position.altitude_msl}m`,
+      // Use optional chaining and provide a default value if altitude_msl is null or undefined
+      value: `${props.telemetryData?.position?.altitude_msl ?? 'N/A'}m`,
       label: 'Altitude MSL',
       showProgress: false,
     },
     {
-      value: `${props.telemetryData.velocity.ground_speed.toFixed(1)} m/s`,
+      // Use optional chaining and provide a default value before calling toFixed
+      value: `${props.telemetryData?.velocity?.ground_speed?.toFixed(1) ?? 'N/A'} m/s`,
       label: 'Ground Speed',
       showProgress: false,
     },
     {
-      value: `${props.telemetryData.battery.remaining_percentage}%`,
+      // Use optional chaining and provide a default value for remaining_percentage
+      value: `${props.telemetryData?.battery?.remaining_percentage ?? 'N/A'}%`,
       label: 'Battery',
       showProgress: true,
-      progressValue: props.telemetryData.battery.remaining_percentage,
+      // Provide a default value for progressValue as well
+      progressValue: props.telemetryData?.battery?.remaining_percentage ?? 0,
       progressColor: batteryProgressColor.value,
     },
     {
-      value: `${props.telemetryData.velocity.heading.toFixed(0)}°`,
+      // Use optional chaining and provide a default value before calling toFixed
+      value: `${props.telemetryData?.velocity?.heading?.toFixed(0) ?? 'N/A'}°`,
       label: 'Heading',
       showProgress: false,
     },
   ])
+
 
   const missionTelemetryDisplay = computed(() => [
     {

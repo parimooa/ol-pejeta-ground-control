@@ -198,7 +198,7 @@ class Vehicle:
 
         Returns:
             Dictionary with telemetry data including position, velocity,
-            mission progress, and more.
+            mission progress, heartbeat info, and more.
         """
         telemetry = {
             "latitude": None,
@@ -216,6 +216,14 @@ class Vehicle:
             "distance_to_mission_wp": None,
             "next_mission_wp_seq": None,
             "mission_progress_percentage": None,
+            # Heartbeat data
+            "heartbeat_timestamp": None,
+            "flight_mode": None,
+            "system_status": None,
+            "armed": None,
+            "guided_enabled": None,
+            "custom_mode": None,
+            "mavlink_version": None,
         }
 
         if not self.vehicle:
@@ -252,6 +260,7 @@ class Vehicle:
                         "MISSION_CURRENT",
                         "NAV_CONTROLLER_OUTPUT",
                         "VFR_HUD",
+                        "HEARTBEAT",  # Added heartbeat to message types
                     ],
                     blocking=False,
                     timeout=0.05,
@@ -307,6 +316,22 @@ class Vehicle:
                     telemetry["ground_speed"] = msg.groundspeed  # m/s
                     if telemetry["relative_altitude"] is None:
                         telemetry["relative_altitude"] = msg.alt
+
+                elif msg_type == "HEARTBEAT":
+                    # Process heartbeat data
+                    telemetry["heartbeat_timestamp"] = time.time()
+                    telemetry["flight_mode"] = msg.base_mode
+                    telemetry["system_status"] = msg.system_status
+                    telemetry["custom_mode"] = msg.custom_mode
+                    telemetry["mavlink_version"] = msg.mavlink_version
+
+                    # Parse base_mode flags for more readable information
+                    telemetry["armed"] = bool(
+                        msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED
+                    )
+                    telemetry["guided_enabled"] = bool(
+                        msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_GUIDED_ENABLED
+                    )
 
             # Calculate mission progress percentage
             if (

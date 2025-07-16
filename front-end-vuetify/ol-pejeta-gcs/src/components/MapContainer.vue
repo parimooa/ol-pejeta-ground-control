@@ -34,6 +34,34 @@
         </div>
       </div>
 
+      <!-- Follow Controls -->
+      <div class="follow-controls pa-2">
+        <div class="toggle-wrapper">
+          <v-btn-toggle
+            v-model="followVehicle"
+            color="purple"
+            variant="outlined"
+          >
+            <v-btn size="small" :value="true">
+              <v-icon>mdi-car-connected</v-icon>
+              <span class="ml-1">Follow Vehicle</span>
+            </v-btn>
+          </v-btn-toggle>
+        </div>
+        <div class="toggle-wrapper ml-2">
+          <v-btn-toggle
+            v-model="followDrone"
+            color="primary"
+            variant="outlined"
+          >
+            <v-btn size="small" :value="true">
+              <v-icon>mdi-quadcopter</v-icon>
+              <span class="ml-1">Follow Drone</span>
+            </v-btn>
+          </v-btn-toggle>
+        </div>
+      </div>
+
       <!-- Telemetry status indicator -->
       <div v-if="droneTelemetryData" class="telemetry-status pa-2">
         <v-chip
@@ -42,7 +70,7 @@
           size="small"
           variant="flat"
         >
-          {{ droneTelemetryConnected ? ' Drone Telemetry Connected' : 'No Drone Telemetry' }}
+          {{ droneTelemetryConnected ? 'Drone Connected' : 'Drone Disconnected' }}
         </v-chip>
       </div>
 
@@ -53,7 +81,7 @@
           size="small"
           variant="flat"
         >
-          {{ vehicleTelemetryConnected ? ' Vehicle Telemetry Connected' : 'No Vehicle Telemetry' }}
+          {{ vehicleTelemetryConnected ? 'Vehicle Connected' : 'Vehicle Disconnected' }}
         </v-chip>
       </div>
 
@@ -77,7 +105,7 @@
             variant="elevated"
             @click="handleEmergencyStop"
           >
-            Emergency Stop (Drone)
+           Disconnect Drone
           </v-btn>
           <v-btn
             class="mx-2"
@@ -96,7 +124,7 @@
 </template>
 
 <script setup>
-  import { computed, onMounted, ref, watch } from 'vue'
+  import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
   import Map from 'ol/Map'
   import View from 'ol/View'
   import TileLayer from 'ol/layer/Tile'
@@ -113,7 +141,6 @@
 
   import droneIcon from '@/assets/drone.png'
   import vehicleIcon from '@/assets/car_top_view.png'
-
 
   const props = defineProps({
     distance: {
@@ -160,17 +187,101 @@
   const searchQuery = ref('')
   const manualControl = ref(true) // Toggle between manual and telemetry control
   const mapType = ref('osm') // 'osm', 'satellite', or 'hybrid'
+  const followVehicle = ref(true) // Whether to follow the vehicle
+  const followDrone = ref(false) // Whether to follow the drone
 
-  // Computed property to check if telemetry is connected
-  const droneTelemetryConnected = computed(() => {
-    return props.droneTelemetryData &&
-      props.droneTelemetryData.position.latitude &&
-      props.droneTelemetryData.position.longitude
+  // Connection status tracking
+  const droneTelemetryConnected = ref(false)
+  const vehicleTelemetryConnected = ref(false)
+  const droneLastHeartbeat = ref(null)
+  const vehicleLastHeartbeat = ref(null)
+  let connectionCheckInterval = null
+
+  // Connection timeout in milliseconds (adjust as needed)
+  const CONNECTION_TIMEOUT = 5000 // 5 seconds
+
+  // Function to check if a timestamp is recent enough to consider connected
+  const isRecentTimestamp = (timestamp) => {
+    if (!timestamp) return false
+
+    let timestampMs
+    if (typeof timestamp === 'number') {
+      // If it's already a number, check if it's in seconds or milliseconds
+      timestampMs = timestamp > 1000000000000 ? timestamp : timestamp * 1000
+    } else {
+      // If it's a string, parse it
+      timestampMs = new Date(timestamp).getTime()
+    }
+
+    const now = Date.now()
+    const timeDiff = now - timestampMs
+
+    console.log(`Timestamp check: now=${now}, timestamp=${timestampMs}, diff=${timeDiff}ms, connected=${timeDiff < CONNECTION_TIMEOUT}`)
+
+    return timeDiff < CONNECTION_TIMEOUT
+  }
+
+  // Function to update drone connection status
+  const updateDroneConnectionStatus = () => {
+    console.log('Updating drone connection status', props.droneTelemetryData)
+
+    const hasValidHeartbeat = props.droneTelemetryData &&
+      props.droneTelemetryData.heartbeat &&
+      props.droneTelemetryData.heartbeat.timestamp &&
+      props.droneTelemetryData.heartbeat.system_status !== null
+
+    if (hasValidHeartbeat) {
+      droneLastHeartbeat.value = props.droneTelemetryData.heartbeat.timestamp
+      console.log('Drone heartbeat updated:', droneLastHeartbeat.value)
+    }
+
+    // Check if we have a recent heartbeat
+    const wasConnected = droneTelemetryConnected.value
+    droneTelemetryConnected.value = isRecentTimestamp(droneLastHeartbeat.value)
+
+    if (wasConnected !== droneTelemetryConnected.value) {
+      console.log('Drone connection status changed:', droneTelemetryConnected.value)
+    }
+  }
+
+  // Function to update vehicle connection status
+  const updateVehicleConnectionStatus = () => {
+    console.log('Updating vehicle connection status', props.vehicleTelemetryData)
+
+    const hasValidHeartbeat = props.vehicleTelemetryData &&
+      props.vehicleTelemetryData.heartbeat &&
+      props.vehicleTelemetryData.heartbeat.timestamp &&
+      props.vehicleTelemetryData.heartbeat.system_status !== null
+
+    if (hasValidHeartbeat) {
+      vehicleLastHeartbeat.value = props.vehicleTelemetryData.heartbeat.timestamp
+      console.log('Vehicle heartbeat updated:', vehicleLastHeartbeat.value)
+    }
+
+    // Check if we have a recent heartbeat
+    const wasConnected = vehicleTelemetryConnected.value
+    vehicleTelemetryConnected.value = isRecentTimestamp(vehicleLastHeartbeat.value)
+
+    if (wasConnected !== vehicleTelemetryConnected.value) {
+      console.log('Vehicle connection status changed:', vehicleTelemetryConnected.value)
+    }
+  }
+
+  // Helper computed property to check if position data is available
+  const dronePositionAvailable = computed(() => {
+    return droneTelemetryConnected.value &&
+      props.droneTelemetryData &&
+      props.droneTelemetryData.position &&
+      props.droneTelemetryData.position.latitude !== null &&
+      props.droneTelemetryData.position.longitude !== null
   })
-  const vehicleTelemetryConnected = computed(() => {
-    return props.vehicleTelemetryData &&
-      props.vehicleTelemetryData.position.latitude &&
-      props.vehicleTelemetryData.position.longitude
+
+  const vehiclePositionAvailable = computed(() => {
+    return vehicleTelemetryConnected.value &&
+      props.vehicleTelemetryData &&
+      props.vehicleTelemetryData.position &&
+      props.vehicleTelemetryData.position.latitude !== null &&
+      props.vehicleTelemetryData.position.longitude !== null
   })
 
   // Add button handlers
@@ -231,9 +342,21 @@
     return fromLonLat([lng, lat])
   }
 
+  // Function to center map on coordinates
+  const centerMapOn = (coordinates) => {
+    if (!map) return
+
+    const view = map.getView()
+    view.animate({
+      center: coordinates,
+      duration: 500, // Smooth transition
+      easing: (t) => t // Linear easing
+    })
+  }
+
   // Function to update drone position from telemetry data
   const updateDroneFromTelemetry = () => {
-    if (!props.droneTelemetryData || !droneTelemetryConnected.value || !droneFeature) {
+    if (!droneTelemetryConnected.value || !dronePositionAvailable.value || !droneFeature) {
       return
     }
 
@@ -242,6 +365,11 @@
 
     // Update drone position
     dronePosition.value = { x: mapCoords[0], y: mapCoords[1] }
+
+    // Center map on drone if following is enabled
+    if (followDrone.value) {
+      centerMapOn([dronePosition.value.x, dronePosition.value.y])
+    }
 
     // Update map features
     updateMapFeatures()
@@ -253,7 +381,7 @@
 
   // Function to update vehicle position from telemetry data
   const updateVehicleFromTelemetry = () => {
-    if (!props.vehicleTelemetryData || !vehicleTelemetryConnected.value || !vehicleFeature) {
+    if (!vehicleTelemetryConnected.value || !vehiclePositionAvailable.value || !vehicleFeature) {
       return
     }
 
@@ -270,6 +398,11 @@
     // Set the heading property on the feature for the style function to use
     if (heading !== undefined) {
       vehicleFeature.set('heading', heading)
+    }
+
+    // Center map on vehicle if following is enabled
+    if (followVehicle.value) {
+      centerMapOn([vehiclePosition.value.x, vehiclePosition.value.y])
     }
 
     // Update map features (but remove the problematic setStyle() call)
@@ -299,8 +432,21 @@
     ]
     distanceLabelFeature.getGeometry().setCoordinates(midPoint)
 
-    // Update distance label
-    distanceLabelFeature.getStyle().getText().setText(props.distance + 'm')
+    // Update distance label by setting a new style
+    distanceLabelFeature.setStyle(new Style({
+      text: new Text({
+        text: props.distance + 'm',
+        fill: new Fill({
+          color: 'white',
+        }),
+        stroke: new Stroke({
+          color: 'rgba(142, 68, 173, 0.8)',
+          width: 5,
+        }),
+        font: '12px sans-serif',
+        padding: [3, 5, 3, 5],
+      }),
+    }))
 
     vectorSource.changed()
   }
@@ -407,7 +553,7 @@
     satelliteLayer = new TileLayer({
       source: new XYZ({
         url: 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
-        maxZoom: 20,
+        maxZoom: 40,
       }),
       visible: false,
     })
@@ -416,7 +562,7 @@
     hybridLabelsLayer = new TileLayer({
       source: new XYZ({
         url: 'https://mt1.google.com/vt/lyrs=h&x={x}&y={y}&z={z}',
-        maxZoom: 20,
+        maxZoom: 40,
       }),
       visible: false,
     })
@@ -431,7 +577,7 @@
       ],
       view: new View({
         center: fromLonLat([36.9759, 0.0078]), // Ol Pejeta coordinates
-        zoom: 15,
+        zoom: 17,
       }),
     })
 
@@ -492,6 +638,7 @@
 
     // Map interaction handlers
     let selectedFeature = null
+    let userInteracting = false
 
     map.on('pointermove', function (e) {
       if (selectedFeature && isManualControlEnabled.value) {
@@ -516,10 +663,23 @@
           }
         })
       }
+
+      // Disable following when user interacts with map
+      userInteracting = true
+      followVehicle.value = false
+      followDrone.value = false
     })
 
     map.on('pointerup', function () {
       selectedFeature = null
+      userInteracting = false
+    })
+
+    // Disable following when user pans the map
+    map.on('movestart', function () {
+      if (!userInteracting) return // Only disable if user initiated the move
+      followVehicle.value = false
+      followDrone.value = false
     })
 
     map.on('moveend', function () {
@@ -536,25 +696,31 @@
     updateMapFeatures()
   }
 
-  watch(() => props.droneTelemetryData, newTelemetry => {
-    if (newTelemetry && newTelemetry.position.latitude && newTelemetry.position.longitude) {
-      updateDroneFromTelemetry()
-      // Disable manual control when drone telemetry is active
-      if (droneTelemetryConnected.value) {
-        manualControl.value = false
-      }
-    }
-  }, { deep: true })
+  // Watch for drone telemetry data changes
+  watch(() => props.droneTelemetryData, (newTelemetry) => {
+    console.log('Drone telemetry data changed:', newTelemetry)
+    if (newTelemetry) {
+      updateDroneConnectionStatus()
 
-  watch(() => props.vehicleTelemetryData, newTelemetry => {
-    if (newTelemetry && newTelemetry.position.latitude && newTelemetry.position.longitude) {
-      updateVehicleFromTelemetry()
-      // Disable manual control when vehicle telemetry is active
-      if (vehicleTelemetryConnected.value) {
+      if (droneTelemetryConnected.value && dronePositionAvailable.value) {
+        updateDroneFromTelemetry()
         manualControl.value = false
       }
     }
-  }, { deep: true })
+  }, { deep: true, immediate: true })
+
+  // Watch for vehicle telemetry data changes
+  watch(() => props.vehicleTelemetryData, (newTelemetry) => {
+    console.log('Vehicle telemetry data changed:', newTelemetry)
+    if (newTelemetry) {
+      updateVehicleConnectionStatus()
+
+      if (vehicleTelemetryConnected.value && vehiclePositionAvailable.value) {
+        updateVehicleFromTelemetry()
+        manualControl.value = false
+      }
+    }
+  }, { deep: true, immediate: true })
 
   // Updated manual control computed property
   const isManualControlEnabled = computed(() => {
@@ -568,6 +734,22 @@
 
   onMounted(() => {
     initMap()
+
+    // Initial connection status check
+    updateDroneConnectionStatus()
+    updateVehicleConnectionStatus()
+
+    // Start periodic connection status checking
+    connectionCheckInterval = setInterval(() => {
+      updateDroneConnectionStatus()
+      updateVehicleConnectionStatus()
+    }, 1000) // Check every second
+  })
+
+  onUnmounted(() => {
+    if (connectionCheckInterval) {
+      clearInterval(connectionCheckInterval)
+    }
   })
 </script>
 
@@ -619,6 +801,13 @@
   display: inline-block;
   margin-left: 11px;
   margin-bottom: 15px;
+}
+
+.follow-controls {
+  display: inline-flex;
+  margin-left: 11px;
+  margin-bottom: 10px;
+  gap: 8px;
 }
 
 .control-buttons {

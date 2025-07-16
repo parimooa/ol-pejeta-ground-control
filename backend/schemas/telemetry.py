@@ -30,11 +30,22 @@ class MissionStatus(BaseModel):
     progress_percentage: Optional[float] = None
 
 
+class Heartbeat(BaseModel):
+    timestamp: Optional[float] = None
+    flight_mode: Optional[int] = None
+    system_status: Optional[int] = None
+    armed: Optional[bool] = None
+    guided_enabled: Optional[bool] = None
+    custom_mode: Optional[int] = None
+    mavlink_version: Optional[int] = None
+
+
 class TelemetryData(BaseModel):
     position: Position = Field(default_factory=Position)
     velocity: Velocity = Field(default_factory=Velocity)
     battery: Battery = Field(default_factory=Battery)
     mission: MissionStatus = Field(default_factory=MissionStatus)
+    heartbeat: Heartbeat = Field(default_factory=Heartbeat)
     timestamp: float = Field(default_factory=lambda: time.time())
 
     @classmethod
@@ -63,5 +74,14 @@ class TelemetryData(BaseModel):
                 next_wp_seq=data.get("next_mission_wp_seq"),
                 distance_to_wp=data.get("distance_to_mission_wp"),
                 progress_percentage=data.get("mission_progress_percentage"),
+            ),
+            heartbeat=Heartbeat(
+                timestamp=data.get("heartbeat_timestamp"),
+                flight_mode=data.get("flight_mode"),
+                system_status=data.get("system_status"),
+                armed=data.get("armed"),
+                guided_enabled=data.get("guided_enabled"),
+                custom_mode=data.get("custom_mode"),
+                mavlink_version=data.get("mavlink_version"),
             ),
         )

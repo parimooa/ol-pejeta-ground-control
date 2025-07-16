@@ -93,9 +93,18 @@
       distance_to_wp: 0,
       progress_percentage: 0,
     },
+    heartbeat: {
+      timestamp: null,
+      flight_mode: null,
+      system_status: null,
+      armed: null,
+      guided_enabled: null,
+      custom_mode: null,
+      mavlink_version: null,
+    },
   })
 
-    const vehicleData = reactive({
+  const vehicleData = reactive({
     position: {
       latitude: null,
       longitude: null,
@@ -119,9 +128,18 @@
       distance_to_wp: 0,
       progress_percentage: 0,
     },
+    heartbeat: {
+      timestamp: null,
+      flight_mode: null,
+      system_status: null,
+      armed: null,
+      guided_enabled: null,
+      custom_mode: null,
+      mavlink_version: null,
+    },
   })
 
-  // Other app state
+  // Another app state
   const distance = ref(0)
   const missionActive = ref(false)
   const showSnackbar = ref(false)
@@ -263,7 +281,7 @@
 
           console.log(`Received ${vehicleType} telemetry data:`, data)
 
-          // Update telemetry data object based on vehicle type
+          // Update a telemetry data object based on a vehicle type
           if (vehicleType === 'drone') {
             if (data.position) {
               Object.assign(droneData.position, data.position)
@@ -276,6 +294,9 @@
             }
             if (data.mission) {
               Object.assign(droneData.mission, data.mission)
+            }
+            if (data.heartbeat) {
+              Object.assign(droneData.heartbeat, data.heartbeat)
             }
           } else if (vehicleType === 'car') {
             // Handle vehicle telemetry data
@@ -290,6 +311,9 @@
             }
             if (data.mission) {
               Object.assign(vehicleData.mission, data.mission)
+            }
+            if (data.heartbeat) {
+              Object.assign(vehicleData.heartbeat, data.heartbeat)
             }
           }
 
@@ -352,17 +376,19 @@
         throw new Error(data.detail || `Failed to connect to ${vehicleType}`)
       }
 
-      // Update initial telemetry data from the connect response for the specific vehicle
+      // Update initial telemetry data from the connected response for the specific vehicle
       if (vehicleType === 'drone') {
         if (data.position) Object.assign(droneData.position, data.position)
         if (data.velocity) Object.assign(droneData.velocity, data.velocity)
         if (data.battery) Object.assign(droneData.battery, data.battery)
         if (data.mission) Object.assign(droneData.mission, data.mission)
+        if (data.heartbeat) Object.assign(droneData.heartbeat, data.heartbeat)
       } else if (vehicleType === 'car') {
         if (data.position) Object.assign(vehicleData.position, data.position)
         if (data.velocity) Object.assign(vehicleData.velocity, data.velocity)
         if (data.battery) Object.assign(vehicleData.battery, data.battery)
         if (data.mission) Object.assign(vehicleData.mission, data.mission)
+        if (data.heartbeat) Object.assign(vehicleData.heartbeat, data.heartbeat)
       }
 
       snackbarMessage.value = `${vehicleType.charAt(0).toUpperCase() + vehicleType.slice(1)} connected successfully`

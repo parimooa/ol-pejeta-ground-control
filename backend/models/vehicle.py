@@ -12,6 +12,7 @@ class Vehicle:
     def __init__(
         self,
         vehicle_type: str,
+        vehicle_id: int,
         ip: str,
         port: str,
         protocol: str,
@@ -27,6 +28,7 @@ class Vehicle:
             protocol: Protocol (e.g., "udp", "tcp")
         """
         self.vehicle_type = vehicle_type
+        self.vehicle_id = vehicle_id
         self.device = ip
         self.port = port
         self.baud_rate = baud_rate
@@ -224,6 +226,7 @@ class Vehicle:
             "guided_enabled": None,
             "custom_mode": None,
             "mavlink_version": None,
+            "vehicle_id": self.vehicle_id,
         }
 
         if not self.vehicle:

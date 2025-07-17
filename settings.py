@@ -1,6 +1,7 @@
 vehicle_settings = [
     {
         "type": "drone",
+        "id": 1,
         "connection": "172.17.240.1",
         "port": "14550",
         "protocol": "udp",
@@ -8,6 +9,7 @@ vehicle_settings = [
     },
     {
         "type": "car",
+        "id": 2,
         "connection": "172.17.240.1",
         "port": "14570",
         "protocol": "udp",

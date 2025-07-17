@@ -46,6 +46,7 @@ class TelemetryData(BaseModel):
     battery: Battery = Field(default_factory=Battery)
     mission: MissionStatus = Field(default_factory=MissionStatus)
     heartbeat: Heartbeat = Field(default_factory=Heartbeat)
+    vehicle_id: Optional[int] = None
     timestamp: float = Field(default_factory=lambda: time.time())
 
     @classmethod
@@ -84,4 +85,5 @@ class TelemetryData(BaseModel):
                 custom_mode=data.get("custom_mode"),
                 mavlink_version=data.get("mavlink_version"),
             ),
+            vehicle_id=data.get("vehicle_id"),
         )

@@ -35,6 +35,7 @@ class VehicleService:
 
             vehicle = Vehicle(
                 vehicle_type=vehicle_type,
+                vehicle_id=settings.get("id"),
                 ip=settings.get("connection", "127.0.0.1"),
                 port=settings.get("port", "14551"),
                 protocol=settings.get("protocol", "udp"),

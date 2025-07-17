@@ -1,8 +1,23 @@
 <template>
   <v-app>
     <v-app-bar app class="px-4" color="#1a3a5c">
-      <div class="text-h6 font-weight-medium">Ol Pejeta Drone Tracker</div>
+      <div class="text-h6 font-weight-medium">Ol Pejeta GCS</div>
       <v-spacer />
+
+      <div class="d-flex align-center mr-4">
+        <v-icon :color="isDroneConnected ? 'success' : 'error'" icon="mdi-quadcopter" class="mr-2" />
+        <span class="text-subtitle-2 font-weight-medium" :class="isDroneConnected ? 'text-success' : 'text-error'">
+          {{ isDroneConnected ? 'Drone Connected' : 'Drone Disconnected' }}
+        </span>
+      </div>
+
+      <div class="d-flex align-center mr-4">
+        <v-icon :color="isVehicleConnected ? 'success' : 'error'" icon="mdi-car" class="mr-2" />
+        <span class="text-subtitle-2 font-weight-medium" :class="isVehicleConnected ? 'text-success' : 'text-error'">
+          {{ isVehicleConnected ? 'Vehicle Connected' : 'Vehicle Disconnected' }}
+        </span>
+      </div>
+
       <v-tabs v-model="activeTab" align-tabs="end" color="white">
         <v-tab
           v-for="(item, index) in navItems"
@@ -16,7 +31,6 @@
     </v-app-bar>
 
     <InfoPanel
-      class="mt-16"
       :distance="distance"
       :instruction-card="instructionCard"
       :instructions="instructions"
@@ -35,6 +49,8 @@
           class="flex-grow-1"
           :distance="distance"
           :drone-telemetry-data="droneData"
+          :is-drone-connected="isDroneConnected"
+          :is-vehicle-connected="isVehicleConnected"
           :vehicle-telemetry-data="vehicleData"
           @emergency-stop="emergencyStop"
           @start-mission="startMission"
@@ -55,7 +71,7 @@
 </template>
 
 <script setup>
-  import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+  import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from 'vue'
   import InfoPanel from './components/InfoPanel.vue'
   import MapContainer from './components/MapContainer.vue'
 
@@ -102,6 +118,7 @@
       custom_mode: null,
       mavlink_version: null,
     },
+    vehicle_id: null,
   })
 
   const vehicleData = reactive({
@@ -137,6 +154,7 @@
       custom_mode: null,
       mavlink_version: null,
     },
+    vehicle_id: null,
   })
 
   // Another app state
@@ -153,14 +171,11 @@
     vehicle: null,
   })
 
-  const wsConnected = reactive({
-    drone: false,
-    vehicle: false,
-  })
-
-
   const wsReconnectAttempts = ref(0)
   const maxReconnectAttempts = 5
+  const isDroneConnected = ref(false)
+  const isVehicleConnected = ref(false)
+  let connectionCheckInterval = null
 
   // Vehicle info derived from telemetry data
   const vehicleSpeed = computed(() => {
@@ -251,6 +266,30 @@
     { deep: true },
   )
 
+  // Function to check connection status based on last heartbeat
+  const checkConnectionStatus = () => {
+    const now = Date.now()
+    const CONNECTION_TIMEOUT = 5000 // 5 seconds
+
+    // Check drone
+    const droneHeartbeat = droneData.heartbeat?.timestamp
+    if (droneHeartbeat) {
+      const lastHeartbeatMs = droneHeartbeat * 1000 // Convert seconds to ms
+      isDroneConnected.value = (now - lastHeartbeatMs) < CONNECTION_TIMEOUT
+    } else {
+      isDroneConnected.value = false
+    }
+
+    // Check vehicle
+    const vehicleHeartbeat = vehicleData.heartbeat?.timestamp
+    if (vehicleHeartbeat) {
+      const lastHeartbeatMs = vehicleHeartbeat * 1000
+      isVehicleConnected.value = (now - lastHeartbeatMs) < CONNECTION_TIMEOUT
+    } else {
+      isVehicleConnected.value = false
+    }
+  }
+
   // WebSocket connection function
   const connectWebSocket = vehicleType => {
     if (wsConnections[vehicleType] && wsConnections[vehicleType].readyState === WebSocket.OPEN) {
@@ -264,7 +303,6 @@
 
       wsConnections[vehicleType].onopen = () => {
         console.log(`WebSocket connection for ${vehicleType} established`)
-        wsConnected[vehicleType] = true
         wsReconnectAttempts.value = 0
 
         snackbarMessage.value = `Connected to ${vehicleType} telemetry`
@@ -296,8 +334,16 @@
               Object.assign(droneData.mission, data.mission)
             }
             if (data.heartbeat) {
-              Object.assign(droneData.heartbeat, data.heartbeat)
+              // To prevent flickering, we only update the timestamp if the new one is valid.
+              // Otherwise, we keep the last known good timestamp.
+              const newHeartbeatData = { ...data.heartbeat };
+              if (newHeartbeatData.timestamp === null && droneData.heartbeat.timestamp !== null) {
+                // If the incoming packet has no heartbeat, reuse the last one we saw.
+                newHeartbeatData.timestamp = droneData.heartbeat.timestamp;
+              }
+              Object.assign(droneData.heartbeat, newHeartbeatData)
             }
+            if (data.vehicle_id) droneData.vehicle_id = data.vehicle_id
           } else if (vehicleType === 'car') {
             // Handle vehicle telemetry data
             if (data.position) {
@@ -313,8 +359,14 @@
               Object.assign(vehicleData.mission, data.mission)
             }
             if (data.heartbeat) {
-              Object.assign(vehicleData.heartbeat, data.heartbeat)
+              const newHeartbeatData = { ...data.heartbeat };
+              if (newHeartbeatData.timestamp === null && vehicleData.heartbeat.timestamp !== null) {
+                // If the incoming packet has no heartbeat, reuse the last one we saw.
+                newHeartbeatData.timestamp = vehicleData.heartbeat.timestamp;
+              }
+              Object.assign(vehicleData.heartbeat, newHeartbeatData)
             }
+            if (data.vehicle_id) vehicleData.vehicle_id = data.vehicle_id
           }
 
         } catch (error) {
@@ -323,7 +375,6 @@
       }
 
       wsConnections[vehicleType].onclose = event => {
-        wsConnected[vehicleType] = false
         console.log(`WebSocket connection for ${vehicleType} closed: ${event.code} ${event.reason}`)
 
         if (event.code !== 1000 && wsReconnectAttempts.value < maxReconnectAttempts) {
@@ -354,7 +405,6 @@
     ) {
       console.log(`Closing WebSocket connection for ${vehicleType}`)
       wsConnections[vehicleType].close(1000, `Disconnecting ${vehicleType} by user action`)
-      wsConnected[vehicleType] = false
     }
   }
 
@@ -427,7 +477,7 @@
       }
 
       missionActive.value = false
-      snackbarMessage.value = 'Emergency stop executed successfully'
+      snackbarMessage.value = 'Disconnected successfully'
       snackbarColor.value = 'info'
       showSnackbar.value = true
 
@@ -444,7 +494,15 @@
   }
 
   onBeforeUnmount(() => {
-    disconnectWebSocket()
+    if (connectionCheckInterval) {
+      clearInterval(connectionCheckInterval)
+    }
+    disconnectWebSocket('drone')
+    disconnectWebSocket('car')
+  })
+
+  onMounted(() => {
+    connectionCheckInterval = setInterval(checkConnectionStatus, 1000) // Check every second
   })
 </script>
 
@@ -454,14 +512,8 @@
   height: 100%;
 }
 :deep(.v-card) {
-  max-width: 400px !important;
   margin: 0 auto;
 }
-
-:deep(.v-navigation-drawer) {
-  width: 300px !important;
-}
-
 /* Global styles for status dots and text remain here for now */
 .status-dot {
   width: 14px;

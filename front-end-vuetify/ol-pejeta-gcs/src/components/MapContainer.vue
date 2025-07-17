@@ -62,29 +62,6 @@
         </div>
       </div>
 
-      <!-- Telemetry status indicator -->
-      <div v-if="droneTelemetryData" class="telemetry-status pa-2">
-        <v-chip
-          :color="droneTelemetryConnected ? 'green' : 'red'"
-          prepend-icon="mdi-quadcopter"
-          size="small"
-          variant="flat"
-        >
-          {{ droneTelemetryConnected ? 'Drone Connected' : 'Drone Disconnected' }}
-        </v-chip>
-      </div>
-
-      <div v-if="vehicleTelemetryData" class="telemetry-status pa-2">
-        <v-chip
-          :color="vehicleTelemetryConnected ? 'green' : 'red'"
-          prepend-icon="mdi-car-connected"
-          size="small"
-          variant="flat"
-        >
-          {{ vehicleTelemetryConnected ? 'Vehicle Connected' : 'Vehicle Disconnected' }}
-        </v-chip>
-      </div>
-
       <div class="control-buttons">
         <div class="button-container">
           <v-btn
@@ -155,6 +132,14 @@
       type: Object,
       default: null,
     },
+    isDroneConnected: {
+      type: Boolean,
+      default: false,
+    },
+    isVehicleConnected: {
+      type: Boolean,
+      default: false,
+    },
   })
 
   const emit = defineEmits([
@@ -190,86 +175,9 @@
   const followVehicle = ref(true) // Whether to follow the vehicle
   const followDrone = ref(false) // Whether to follow the drone
 
-  // Connection status tracking
-  const droneTelemetryConnected = ref(false)
-  const vehicleTelemetryConnected = ref(false)
-  const droneLastHeartbeat = ref(null)
-  const vehicleLastHeartbeat = ref(null)
-  let connectionCheckInterval = null
-
-  // Connection timeout in milliseconds (adjust as needed)
-  const CONNECTION_TIMEOUT = 5000 // 5 seconds
-
-  // Function to check if a timestamp is recent enough to consider connected
-  const isRecentTimestamp = (timestamp) => {
-    if (!timestamp) return false
-
-    let timestampMs
-    if (typeof timestamp === 'number') {
-      // If it's already a number, check if it's in seconds or milliseconds
-      timestampMs = timestamp > 1000000000000 ? timestamp : timestamp * 1000
-    } else {
-      // If it's a string, parse it
-      timestampMs = new Date(timestamp).getTime()
-    }
-
-    const now = Date.now()
-    const timeDiff = now - timestampMs
-
-    console.log(`Timestamp check: now=${now}, timestamp=${timestampMs}, diff=${timeDiff}ms, connected=${timeDiff < CONNECTION_TIMEOUT}`)
-
-    return timeDiff < CONNECTION_TIMEOUT
-  }
-
-  // Function to update drone connection status
-  const updateDroneConnectionStatus = () => {
-    console.log('Updating drone connection status', props.droneTelemetryData)
-
-    const hasValidHeartbeat = props.droneTelemetryData &&
-      props.droneTelemetryData.heartbeat &&
-      props.droneTelemetryData.heartbeat.timestamp &&
-      props.droneTelemetryData.heartbeat.system_status !== null
-
-    if (hasValidHeartbeat) {
-      droneLastHeartbeat.value = props.droneTelemetryData.heartbeat.timestamp
-      console.log('Drone heartbeat updated:', droneLastHeartbeat.value)
-    }
-
-    // Check if we have a recent heartbeat
-    const wasConnected = droneTelemetryConnected.value
-    droneTelemetryConnected.value = isRecentTimestamp(droneLastHeartbeat.value)
-
-    if (wasConnected !== droneTelemetryConnected.value) {
-      console.log('Drone connection status changed:', droneTelemetryConnected.value)
-    }
-  }
-
-  // Function to update vehicle connection status
-  const updateVehicleConnectionStatus = () => {
-    console.log('Updating vehicle connection status', props.vehicleTelemetryData)
-
-    const hasValidHeartbeat = props.vehicleTelemetryData &&
-      props.vehicleTelemetryData.heartbeat &&
-      props.vehicleTelemetryData.heartbeat.timestamp &&
-      props.vehicleTelemetryData.heartbeat.system_status !== null
-
-    if (hasValidHeartbeat) {
-      vehicleLastHeartbeat.value = props.vehicleTelemetryData.heartbeat.timestamp
-      console.log('Vehicle heartbeat updated:', vehicleLastHeartbeat.value)
-    }
-
-    // Check if we have a recent heartbeat
-    const wasConnected = vehicleTelemetryConnected.value
-    vehicleTelemetryConnected.value = isRecentTimestamp(vehicleLastHeartbeat.value)
-
-    if (wasConnected !== vehicleTelemetryConnected.value) {
-      console.log('Vehicle connection status changed:', vehicleTelemetryConnected.value)
-    }
-  }
-
   // Helper computed property to check if position data is available
   const dronePositionAvailable = computed(() => {
-    return droneTelemetryConnected.value &&
+    return props.isDroneConnected &&
       props.droneTelemetryData &&
       props.droneTelemetryData.position &&
       props.droneTelemetryData.position.latitude !== null &&
@@ -277,7 +185,7 @@
   })
 
   const vehiclePositionAvailable = computed(() => {
-    return vehicleTelemetryConnected.value &&
+    return props.isVehicleConnected &&
       props.vehicleTelemetryData &&
       props.vehicleTelemetryData.position &&
       props.vehicleTelemetryData.position.latitude !== null &&
@@ -356,7 +264,7 @@
 
   // Function to update drone position from telemetry data
   const updateDroneFromTelemetry = () => {
-    if (!droneTelemetryConnected.value || !dronePositionAvailable.value || !droneFeature) {
+    if (!props.isDroneConnected || !dronePositionAvailable.value || !droneFeature) {
       return
     }
 
@@ -381,7 +289,7 @@
 
   // Function to update vehicle position from telemetry data
   const updateVehicleFromTelemetry = () => {
-    if (!vehicleTelemetryConnected.value || !vehiclePositionAvailable.value || !vehicleFeature) {
+    if (!props.isVehicleConnected || !vehiclePositionAvailable.value || !vehicleFeature) {
       return
     }
 
@@ -461,8 +369,8 @@
 
         if (type === 'drone') {
           // Different styling based on telemetry connection
-          const color = droneTelemetryConnected.value ? '#2ecc71' : '#3498db'
-          const strokeColor = droneTelemetryConnected.value ? 'rgba(46, 204, 113, 0.5)' : 'rgba(52, 152, 219, 0.5)'
+          const color = props.isDroneConnected ? '#2ecc71' : '#3498db'
+          const strokeColor = props.isDroneConnected ? 'rgba(46, 204, 113, 0.5)' : 'rgba(52, 152, 219, 0.5)'
 
           return new Style({
             image: new Icon({
@@ -699,32 +607,26 @@
   // Watch for drone telemetry data changes
   watch(() => props.droneTelemetryData, (newTelemetry) => {
     console.log('Drone telemetry data changed:', newTelemetry)
-    if (newTelemetry) {
-      updateDroneConnectionStatus()
-
-      if (droneTelemetryConnected.value && dronePositionAvailable.value) {
-        updateDroneFromTelemetry()
-        manualControl.value = false
-      }
+    if (newTelemetry && dronePositionAvailable.value) {
+      updateDroneFromTelemetry()
+      // Disable manual control when telemetry is active
+      manualControl.value = false
     }
-  }, { deep: true, immediate: true })
+  }, { deep: true })
 
   // Watch for vehicle telemetry data changes
   watch(() => props.vehicleTelemetryData, (newTelemetry) => {
     console.log('Vehicle telemetry data changed:', newTelemetry)
-    if (newTelemetry) {
-      updateVehicleConnectionStatus()
-
-      if (vehicleTelemetryConnected.value && vehiclePositionAvailable.value) {
-        updateVehicleFromTelemetry()
-        manualControl.value = false
-      }
+    if (newTelemetry && vehiclePositionAvailable.value) {
+      updateVehicleFromTelemetry()
+      // Disable manual control when telemetry is active
+      manualControl.value = false
     }
-  }, { deep: true, immediate: true })
+  }, { deep: true })
 
   // Updated manual control computed property
   const isManualControlEnabled = computed(() => {
-    return manualControl.value && !droneTelemetryConnected.value && !vehicleTelemetryConnected.value
+    return manualControl.value && !props.isDroneConnected && !props.isVehicleConnected
   })
 
   // Watch for changes in distance prop
@@ -734,22 +636,10 @@
 
   onMounted(() => {
     initMap()
-
-    // Initial connection status check
-    updateDroneConnectionStatus()
-    updateVehicleConnectionStatus()
-
-    // Start periodic connection status checking
-    connectionCheckInterval = setInterval(() => {
-      updateDroneConnectionStatus()
-      updateVehicleConnectionStatus()
-    }, 1000) // Check every second
   })
 
   onUnmounted(() => {
-    if (connectionCheckInterval) {
-      clearInterval(connectionCheckInterval)
-    }
+    // Map instance is automatically cleaned up by OpenLayers
   })
 </script>
 
@@ -795,12 +685,6 @@
   padding: 4px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   backdrop-filter: blur(10px);
-}
-
-.telemetry-status {
-  display: inline-block;
-  margin-left: 11px;
-  margin-bottom: 15px;
 }
 
 .follow-controls {

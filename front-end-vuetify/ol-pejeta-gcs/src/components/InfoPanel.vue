@@ -1,9 +1,10 @@
 <template>
   <v-navigation-drawer
     class="info-panel"
+    app
     location="right"
     permanent
-    width="350"
+    width="500"
   >
 
     <div class="pa-1">

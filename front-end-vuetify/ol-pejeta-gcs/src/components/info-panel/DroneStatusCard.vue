@@ -219,7 +219,7 @@
       showProgress: false,
     },
     {
-      value: `${props.telemetryData.mission.distance_to_wp.toFixed(0)}m`,
+      value: `${props.telemetryData.mission.distance_to_wp.toFixed(0)?? 'N/A'}m`,
       label: 'Distance to WP',
       showProgress: false,
     },

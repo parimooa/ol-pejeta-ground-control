@@ -9,3 +9,5 @@ class FlightMode(Enum):
     RTL = 6
     LAND = 9
     AUTO = 3
+    FOLLOW = 23
+    LOITER = 5

@@ -137,6 +137,39 @@ class TelemetryWebsocketManager:
         # Register the callback with the vehicle service
         vehicle_service.register_telemetry_callback(vehicle_type, telemetry_callback)
 
+    def broadcast_event(self, event: Dict[str, Any]):
+        """
+        Schedules a non-telemetry event to be broadcast to all connected clients.
+        This is thread-safe and can be called from other services.
+        """
+        if self.loop and not self.loop.is_closed():
+            # Schedule the async broadcast function to run on the main event loop
+            self.loop.call_soon_threadsafe(
+                self.loop.create_task, self._async_broadcast_event(event)
+            )
+        else:
+            print(
+                "WARNING: Event loop not available for broadcast_event. Event dropped."
+            )
+
+    async def _async_broadcast_event(self, event: Dict[str, Any]):
+        """The async part of broadcasting an event to all clients."""
+        print(f"Broadcasting event: {event}")
+        message = json.dumps({"type": "coordination_event", **event})
+
+        disconnected_clients = []
+        # Iterate over a copy of the list to avoid issues if a client disconnects during the broadcast
+        for websocket in self.active_connections[:]:
+            try:
+                await websocket.send_text(message)
+            except Exception as e:
+                print(f"Error sending event to client: {e}")
+                disconnected_clients.append(websocket)
+
+        # Clean up any clients that failed during the broadcast
+        for websocket in disconnected_clients:
+            self.disconnect(websocket)
+
     async def _broadcast_telemetry(self, vehicle_type: str, telemetry: TelemetryData):
         """Broadcast telemetry data to all connected clients for this vehicle."""
         # Convert telemetry to JSON

@@ -50,6 +50,8 @@
           :distance="distance"
           :drone-telemetry-data="droneData"
           :is-drone-connected="isDroneConnected"
+          :is-coordination-active="isCoordinationActive"
+          :is-drone-following="isDroneFollowing"
           :is-vehicle-connected="isVehicleConnected"
           :vehicle-telemetry-data="vehicleData"
           @emergency-stop="emergencyStop"
@@ -176,6 +178,10 @@
   const isDroneConnected = ref(false)
   const isVehicleConnected = ref(false)
   let connectionCheckInterval = null
+  // Coordination state
+  const isCoordinationActive = ref(false)
+  const isDroneFollowing = ref(false)
+
 
   // Vehicle info derived from telemetry data
   const vehicleSpeed = computed(() => {
@@ -316,6 +322,42 @@
 
           // Ignore ping messages
           if (data.type === 'ping') return
+
+          // Handle new coordination events
+          if (data.type === 'coordination_event') {
+            console.log(`Received coordination event:`, data.event)
+            switch (data.event) {
+              case 'coordination_active':
+                isCoordinationActive.value = true
+                snackbarMessage.value = 'Coordination Mode Activated.'
+                snackbarColor.value = 'info'
+                showSnackbar.value = true
+                break
+              case 'following_triggered':
+                isDroneFollowing.value = true
+                snackbarMessage.value = 'SAFETY: Drone is now following the car!'
+                snackbarColor.value = 'warning'
+                showSnackbar.value = true
+                break
+              case 'following_stopped':
+                isDroneFollowing.value = false
+                break
+              case 'coordination_stopped':
+                isCoordinationActive.value = false
+                isDroneFollowing.value = false
+                snackbarMessage.value = 'Coordination Mode Deactivated.'
+                snackbarColor.value = 'info'
+                showSnackbar.value = true
+                break
+              case 'coordination_fault':
+                snackbarMessage.value = `Coordination Fault: ${data.reason}`
+                snackbarColor.value = 'error'
+                showSnackbar.value = true
+                // Do not change isCoordinationActive or isDroneFollowing, as the service is still running
+                break
+            }
+            return; // Stop processing since this wasn't a telemetry message
+          }
 
           console.log(`Received ${vehicleType} telemetry data:`, data)
 

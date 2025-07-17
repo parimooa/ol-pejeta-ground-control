@@ -61,6 +61,26 @@
           </v-btn-toggle>
         </div>
       </div>
+      <!-- Coordination Controls -->
+      <div class="coordination-controls pa-2">
+        <div class="toggle-wrapper">
+          <v-btn
+            @click="startCoordination"
+            size="small"
+            color="green"
+            variant="outlined"
+            prepend-icon="mdi-sync"
+          >Coordination On</v-btn>
+          <v-btn
+            @click="stopCoordination"
+            size="small"
+            color="red"
+            class="ml-2"
+            variant="outlined"
+            prepend-icon="mdi-sync-off"
+          >Coordination Off</v-btn>
+        </div>
+      </div>
 
       <div class="control-buttons">
         <div class="button-container">
@@ -140,6 +160,14 @@
       type: Boolean,
       default: false,
     },
+    isCoordinationActive: {
+      type: Boolean,
+      default: false,
+    },
+    isDroneFollowing: {
+      type: Boolean,
+      default: false,
+    }
   })
 
   const emit = defineEmits([
@@ -202,6 +230,25 @@
     console.log('MapContainer: Emergency Stop button clicked')
     emit('emergency-stop')
   }
+
+  const startCoordination = async () => {
+    try {
+      await fetch('http://localhost:8000/coordination/start', { method: 'POST' });
+      console.log('Coordination started');
+      // You can also emit an event to show a snackbar in App.vue
+    } catch (error) {
+      console.error('Failed to start coordination:', error);
+    }
+  };
+
+  const stopCoordination = async () => {
+    try {
+      await fetch('http://localhost:8000/coordination/stop', { method: 'POST' });
+      console.log('Coordination stopped');
+    } catch (error) {
+      console.error('Failed to stop coordination:', error);
+    }
+  };
 
   const formatCoordinate = (value, type) => {
     const absValue = Math.abs(value)
@@ -369,8 +416,15 @@
 
         if (type === 'drone') {
           // Different styling based on telemetry connection
-          const color = props.isDroneConnected ? '#2ecc71' : '#3498db'
-          const strokeColor = props.isDroneConnected ? 'rgba(46, 204, 113, 0.5)' : 'rgba(52, 152, 219, 0.5)'
+          let color = props.isDroneConnected ? '#2ecc71' : '#3498db'
+          let strokeColor = props.isDroneConnected ? 'rgba(46, 204, 113, 0.5)' : 'rgba(52, 152, 219, 0.5)'
+
+          // Override style if the drone is in safety-follow mode
+          if (props.isDroneFollowing) {
+            color = '#f39c12' // Warning orange
+            strokeColor = 'rgba(243, 156, 18, 0.7)'
+          }
+
 
           return new Style({
             image: new Icon({
@@ -634,6 +688,13 @@
     updateMapFeatures()
   })
 
+  // Watch for changes in the following status to redraw the map
+  watch(() => props.isDroneFollowing, () => {
+    if (vectorSource) {
+      vectorSource.changed(); // This forces the style function to re-run
+    }
+  });
+
   onMounted(() => {
     initMap()
   })
@@ -685,6 +746,12 @@
   padding: 4px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   backdrop-filter: blur(10px);
+}
+
+.coordination-controls {
+  display: inline-flex;
+  margin-left: 11px;
+  margin-bottom: 10px;
 }
 
 .follow-controls {

@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 from backend.services.vehicle_service import vehicle_service
 
-from backend.api.routes import vehicle, survey
+from backend.api.routes import vehicle, survey, coordination
 from backend.api.websockets.telemetry import telemetry_manager
 
 app = FastAPI(
@@ -25,6 +25,7 @@ app.add_middleware(
 # Include routers
 app.include_router(vehicle.router)
 app.include_router(survey.router)
+app.include_router(coordination.router)
 
 
 @app.get("/")

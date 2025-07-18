@@ -56,6 +56,7 @@ class CoordinationService:
             car_pos = car.position()
 
             distance = self._calculate_distance(drone_pos, car_pos)
+            print(f"Distance: {distance:.1f}m")
             if distance == -1:
                 print("Could not calculate distance, missing position data.")
                 for _ in range(20):  # 20 * 0.1 = 2 seconds total
@@ -77,7 +78,7 @@ class CoordinationService:
                         "CRITICAL: Follow sequence failed. Coordination will not engage."
                     )
 
-            elif distance == 0 and self._is_following:
+            elif 0 < distance < 10 and self._is_following:
                 print(
                     f"INFO: Distance {distance:.1f}m < {self.max_distance}m. Stopping follow mode."
                 )
@@ -102,11 +103,6 @@ class CoordinationService:
         self._is_active = False
         self._is_following = False
         telemetry_manager.broadcast_event({"event": "coordination_stopped"})
-        if self._thread:
-            # Give it time to finish current iteration but not too long
-            self._thread.join(timeout=10)
-            if self._thread.is_alive():
-                print("Warning: Coordination thread did not stop gracefully")
 
     def _initiate_follow_sequence(self, drone: "Vehicle") -> bool:
         """

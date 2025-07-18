@@ -36,6 +36,13 @@ class Vehicle:
         self.connection_string = None
         self.vehicle = None
         self.mission_total_waypoints = 0
+        self.visited_waypoints = set()
+        self.mission_waypoints = {}
+        self.current_waypoint_seq = None
+        self.next_waypoint_seq = None
+        self.last_waypoint_reach_time = None
+        self.waypoint_visit_threshold = 3.0  # meters
+        self.waypoint_confirmation_delay = 2.0  # seconds
 
         # State management for telemetry
         self._lock = threading.Lock()
@@ -50,6 +57,8 @@ class Vehicle:
 
     def _get_initial_telemetry_dict(self) -> Dict[str, Any]:
         """Returns a clean dictionary for telemetry state."""
+        # The nested function definition has been removed.
+        # This method now correctly returns the dictionary.
         return {
             "latitude": None,
             "longitude": None,
@@ -66,6 +75,9 @@ class Vehicle:
             "distance_to_mission_wp": None,
             "next_mission_wp_seq": None,
             "mission_progress_percentage": None,
+            "mission_total_waypoints": 0,
+            "mission_waypoints": {},
+            "visited_waypoints": [],
             "heartbeat_timestamp": None,
             "flight_mode": None,
             "system_status": None,
@@ -137,20 +149,25 @@ class Vehicle:
         # Reset the stop flag if it was set
         self._stop_threads.clear()
 
+        # Fetch mission waypoints synchronously BEFORE starting the listener thread.
+        self.fetch_mission_waypoints()
+
+        # --- Start of Change ---
+        # Set the initial current and next waypoints now that the mission is loaded.
+        self._update_current_next_waypoints()
+        # --- End of Change ---
+
         # Start heartbeat thread
         self._heartbeat_thread = threading.Thread(target=self._heartbeat_loop)
         self._heartbeat_thread.daemon = True
         self._heartbeat_thread.start()
 
-        # Start the new central message listener
+        # Now, start the central message listener for continuous telemetry
         self._message_listener_thread = threading.Thread(
             target=self._message_listener_loop
         )
         self._message_listener_thread.daemon = True
         self._message_listener_thread.start()
-
-        # Fetch the mission count to sync state
-        self.fetch_mission_count()
 
         return self.vehicle
 
@@ -232,12 +249,11 @@ class Vehicle:
         else:
             print("No vehicle connected to disconnect.")
 
-    def fetch_mission_count(self):
-        """Requests the mission waypoint count from the vehicle to sync state."""
+    def fetch_mission_waypoints(self):
+        """Fetch all mission waypoints for visit detection."""
         if not self.vehicle:
             return
 
-        print("Requesting mission count from vehicle...")
         try:
             self.vehicle.mav.mission_request_list_send(
                 self.vehicle.target_system, self.vehicle.target_component
@@ -246,15 +262,35 @@ class Vehicle:
             msg = self.vehicle.recv_match(
                 type="MISSION_COUNT", blocking=True, timeout=3
             )
-            if msg:
-                self.mission_total_waypoints = msg.count
-                print(
-                    f"Vehicle has {self.mission_total_waypoints} waypoints in its mission."
+            if not msg:
+                return
+
+            waypoint_count = msg.count
+            self.mission_total_waypoints = waypoint_count
+            self.mission_waypoints = {}
+
+            for i in range(waypoint_count):
+                self.vehicle.mav.mission_request_int_send(
+                    self.vehicle.target_system, self.vehicle.target_component, i
                 )
-            else:
-                print("Did not receive mission count from vehicle (timeout).")
+
+                wp_msg = self.vehicle.recv_match(
+                    type="MISSION_ITEM_INT", blocking=True, timeout=3
+                )
+                if wp_msg:
+                    self.mission_waypoints[i] = {
+                        "lat": wp_msg.x / 1e7,
+                        "lon": wp_msg.y / 1e7,
+                        "alt": wp_msg.z,
+                        "seq": wp_msg.seq,
+                    }
+
+            print(
+                f"Loaded {len(self.mission_waypoints)} waypoints for visit detection."
+            )
+
         except Exception as e:
-            print(f"Error fetching mission count: {e}")
+            print(f"Error fetching mission waypoints: {e}")
 
     def set_mode(self, mode_id: FlightMode) -> bool:
         """Set the flight mode of the vehicle."""
@@ -476,20 +512,14 @@ class Vehicle:
             self.last_telemetry["heading"] = (
                 msg.hdg / 100.0 if msg.hdg != 65535 else None
             )
+
+            # Check for waypoint visits when position updates
+            self._check_waypoint_visits()
+
         elif msg_type == "SYS_STATUS":
             self.last_telemetry["battery_voltage"] = msg.voltage_battery / 1000.0
             self.last_telemetry["battery_remaining_percentage"] = msg.battery_remaining
-        elif msg_type == "MISSION_CURRENT":
-            self.last_telemetry["current_mission_wp_seq"] = msg.seq
-            if (
-                self.mission_total_waypoints > 0
-                and msg.seq >= self.mission_total_waypoints
-            ):
-                self.fetch_mission_count()
-            if self.mission_total_waypoints > 0 and msg.seq < (
-                self.mission_total_waypoints - 1
-            ):
-                self.last_telemetry["next_mission_wp_seq"] = msg.seq + 1
+
         elif msg_type == "NAV_CONTROLLER_OUTPUT":
             self.last_telemetry["distance_to_mission_wp"] = msg.wp_dist
         elif msg_type == "VFR_HUD":
@@ -509,27 +539,172 @@ class Vehicle:
                 msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_GUIDED_ENABLED
             )
 
-        # Recalculate mission progress after any update
-        if (
-            self.mission_total_waypoints > 1
-            and self.last_telemetry.get("current_mission_wp_seq") is not None
-        ):
-            current_seq = self.last_telemetry["current_mission_wp_seq"]
-            total_wps = self.mission_total_waypoints
-            if current_seq >= total_wps - 1:
-                self.last_telemetry["mission_progress_percentage"] = 100
-            else:
-                progress = (float(current_seq) / (total_wps - 1)) * 100.0
-                self.last_telemetry["mission_progress_percentage"] = round(
-                    max(0.0, min(progress, 100.0))
-                )
-        elif self.mission_total_waypoints <= 1:
+        # --- Start of New/Modified Section ---
+        # This block ensures that every telemetry packet sent to the frontend
+        # contains the complete and most up-to-date mission status.
+
+        # Add waypoint data to every packet for consistency
+        self.last_telemetry["mission_total_waypoints"] = len(self.mission_waypoints)
+        self.last_telemetry["mission_waypoints"] = self.mission_waypoints
+        self.last_telemetry["visited_waypoints"] = list(self.visited_waypoints)
+
+        # Recalculate mission progress based on custom visit detection
+        total_wps = len(self.mission_waypoints)
+        if total_wps > 0:
+            visited_count = len(self.visited_waypoints)
+            progress = (float(visited_count) / total_wps) * 100.0
+            self.last_telemetry["mission_progress_percentage"] = round(
+                max(0.0, min(progress, 100.0))
+            )
+        else:
             self.last_telemetry["mission_progress_percentage"] = 0
+        # --- End of New/Modified Section ---
 
     def get_current_telemetry(self) -> Dict[str, Any]:
         """Returns a thread-safe copy of the latest telemetry data."""
         with self._lock:
             return self.last_telemetry.copy()
+
+    # def _update_waypoint_sequences(self):
+    #     """Update current and next waypoint sequences based on visited waypoints."""
+    #     if not hasattr(self, 'mission_waypoints') or not self.mission_waypoints:
+    #         return
+    #
+    #     # Find the highest visited waypoint sequence
+    #     if self.visited_waypoints:
+    #         highest_visited = max(self.visited_waypoints)
+    #
+    #         # Current waypoint is the next unvisited waypoint after the highest visited
+    #         for seq in sorted(self.mission_waypoints.keys()):
+    #             if seq not in self.visited_waypoints:
+    #                 self.current_waypoint_seq = seq
+    #                 self.last_telemetry["current_mission_wp_seq"] = seq
+    #                 break
+    #         else:
+    #             # All waypoints visited
+    #             self.current_waypoint_seq = highest_visited
+    #             self.last_telemetry["current_mission_wp_seq"] = highest_visited
+    #     else:
+    #         # No waypoints visited yet, current is the first waypoint
+    #         if self.mission_waypoints:
+    #             first_seq = min(self.mission_waypoints.keys())
+    #             self.current_waypoint_seq = first_seq
+    #             self.last_telemetry["current_mission_wp_seq"] = first_seq
+    #
+    #     # Set next waypoint
+    #     current_seq = self.current_waypoint_seq
+    #     if current_seq is not None:
+    #         # Find next unvisited waypoint
+    #         next_seq = None
+    #         for seq in sorted(self.mission_waypoints.keys()):
+    #             if seq > current_seq and seq not in self.visited_waypoints:
+    #                 next_seq = seq
+    #                 break
+    #
+    #         self.next_waypoint_seq = next_seq
+    #         self.last_telemetry["next_mission_wp_seq"] = next_seq
+
+    def get_waypoint_visit_status(self):
+        """Get the current waypoint visit status for UI display."""
+        return {
+            "visited_waypoints": list(self.visited_waypoints),
+            "total_waypoints": self.mission_total_waypoints,
+            "current_waypoint": self.current_waypoint_seq,
+            "next_waypoint": self.next_waypoint_seq,
+            "visited_count": len(self.visited_waypoints),
+        }
+
+    def _update_current_next_waypoints(self):
+        """Update current and next waypoint based on visited waypoints."""
+        if not self.mission_waypoints:
+            return
+
+        sorted_waypoints = sorted(self.mission_waypoints.keys())
+
+        # Find current waypoint (first unvisited)
+        current_wp = None
+        for wp_seq in sorted_waypoints:
+            if wp_seq not in self.visited_waypoints:
+                current_wp = wp_seq
+                break
+
+        if current_wp is None:
+            # All waypoints visited
+            current_wp = sorted_waypoints[-1]
+
+        # Find next waypoint
+        next_wp = None
+        for wp_seq in sorted_waypoints:
+            if wp_seq > current_wp and wp_seq not in self.visited_waypoints:
+                next_wp = wp_seq
+                break
+
+        self.current_waypoint_seq = current_wp
+        self.next_waypoint_seq = next_wp
+        self.last_telemetry["current_mission_wp_seq"] = current_wp
+        self.last_telemetry["next_mission_wp_seq"] = next_wp
+
+    def _check_waypoint_visits(self):
+        """Check if vehicle has visited any unvisited waypoints within tolerance."""
+        current_lat = self.last_telemetry.get("latitude")
+        current_lon = self.last_telemetry.get("longitude")
+
+        if current_lat is None or current_lon is None or not self.mission_waypoints:
+            return
+
+        current_time = time.time()
+
+        for wp_seq, waypoint in self.mission_waypoints.items():
+            if wp_seq in self.visited_waypoints:
+                continue
+
+            distance = self._calculate_distance(
+                current_lat, current_lon, waypoint["lat"], waypoint["lon"]
+            )
+
+            if distance <= self.waypoint_visit_threshold:
+                if not hasattr(self, "_waypoint_visit_candidates"):
+                    self._waypoint_visit_candidates = {}
+
+                if wp_seq not in self._waypoint_visit_candidates:
+                    self._waypoint_visit_candidates[wp_seq] = current_time
+                elif (
+                    current_time - self._waypoint_visit_candidates[wp_seq]
+                    >= self.waypoint_confirmation_delay
+                ):
+                    self.visited_waypoints.add(wp_seq)
+                    self._update_current_next_waypoints()
+                    print(f"Waypoint {wp_seq} visited! Distance: {distance:.2f}m")
+                    del self._waypoint_visit_candidates[wp_seq]
+            else:
+                if (
+                    hasattr(self, "_waypoint_visit_candidates")
+                    and wp_seq in self._waypoint_visit_candidates
+                ):
+                    del self._waypoint_visit_candidates[wp_seq]
+
+    def _calculate_distance(self, lat1, lon1, lat2, lon2):
+        """Calculate the distance between two GPS coordinates using Haversine formula."""
+        if None in (lat1, lon1, lat2, lon2):
+            return float("inf")
+
+        # Convert latitude and longitude from degrees to radians
+        lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
+
+        # Haversine formula
+        dlat = lat2 - lat1
+        dlon = lon2 - lon1
+        a = (
+            math.sin(dlat / 2) ** 2
+            + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
+        )
+        c = 2 * math.asin(math.sqrt(a))
+
+        # Radius of earth in meters
+        r = 6371000
+        return c * r
+
+    # Create a singleton instance
 
     def position(self) -> Dict[str, Any]:
         """

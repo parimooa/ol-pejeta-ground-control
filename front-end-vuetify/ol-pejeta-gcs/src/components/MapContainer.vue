@@ -193,6 +193,7 @@
   let distanceLabelFeature = null
   let vectorSource = null
   let vectorLayer = null
+  let waypointFeatures = {}
 
   const currentPosition = ref({ lat: 0.0078, lng: 36.9759 })
   const dronePosition = ref({ x: 0, y: 0 })
@@ -413,6 +414,25 @@
       source: vectorSource,
       style (feature) {
         const type = feature.get('type')
+                 if (type === 'waypoint') {
+                   const isVisited = feature.get('isVisited')
+                   const isCurrent = feature.get('isCurrent')
+
+                   let fillColor = 'rgba(255, 255, 255, 0.6)'
+                   let strokeColor = '#6c757d' // Grey for pending
+                   let radius = 6
+                   let zIndex = 10
+
+                   if (isVisited) {
+                     fillColor = 'rgba(40, 167, 69, 0.8)' // Green
+                     strokeColor = '#1a7431'
+                     zIndex = 5
+                   } else if (isCurrent) {
+                     fillColor = 'rgba(255, 193, 7, 0.9)' // Yellow
+                     strokeColor = '#b38600'
+                   }
+                 } else
+
 
         if (type === 'drone') {
           // Different styling based on telemetry connection

@@ -37,10 +37,9 @@
       :mission-steps="missionSteps"
       :status="status"
       :status-color="statusColor"
-      :telemetry-data="droneData"
+      :drone-telemetry-data="droneData"
+      :vehicle-telemetry-data="vehicleData"
       :vehicle-location="vehicleLocation"
-      :vehicle-speed="vehicleSpeed"
-      :vehicle-state="vehicleState"
     />
 
     <v-main>
@@ -110,6 +109,7 @@
       next_wp_seq: 1,
       distance_to_wp: 0,
       progress_percentage: 0,
+      total_waypoints: 0,
     },
     heartbeat: {
       timestamp: null,
@@ -146,6 +146,9 @@
       next_wp_seq: 1,
       distance_to_wp: 0,
       progress_percentage: 0,
+      total_waypoints: 0,
+      mission_waypoints: {}, // <-- Add this
+      visited_waypoints: [],   // <-- Add this
     },
     heartbeat: {
       timestamp: null,
@@ -166,7 +169,6 @@
   const snackbarMessage = ref('')
   const snackbarColor = ref('success')
 
-  // WebSocket connection
   // WebSocket connections
   const wsConnections = reactive({
     drone: null,
@@ -452,7 +454,7 @@
 
 
   const startMission = async vehicleType => {
-    console.log('Calling start mission'+vehicleType)
+    console.log('Connecting to '+vehicleType)
     try {
       const response = await fetch(`http://localhost:8000/vehicles/${vehicleType}/connect`, {
         method: 'POST',

@@ -19,46 +19,56 @@
             <div class="font-weight-bold text-h5">{{ item.value }}</div>
             <div class="text-caption text-white">{{ item.label }}</div>
             <!-- Progress bar for battery -->
-            <v-progress-linear
-              v-if="item.showProgress"
-              class="mt-1"
-              :color="item.progressColor"
-              height="4"
-              :model-value="item.progressValue"
-              rounded
-            />
+<!--            <v-progress-linear-->
+<!--              v-if="item.showProgress"-->
+<!--              class="mt-1"-->
+<!--              :color="item.progressColor"-->
+<!--              height="4"-->
+<!--              :model-value="item.progressValue"-->
+<!--              rounded-->
+<!--            />-->
           </v-sheet>
         </v-col>
       </v-row>
     </v-container>
 
     <v-card-subtitle class="text-h6 text-md-h5 font-weight-bold">
-      Mission Status
+     Survey  Status
     </v-card-subtitle>
 
-    <v-container fluid>
-      <v-row dense>
-        <v-col
-          v-for="(item, index) in missionTelemetryDisplay"
-          :key="'mission-' + index"
-          cols="6"
-        >
-          <v-sheet class="py-2 text-center" color="indigo" rounded>
-            <div class="font-weight-bold text-h5">{{ item.value }}</div>
-            <div class="text-caption text-white">{{ item.label }}</div>
-            <!-- Progress bar for mission progress -->
-            <v-progress-linear
-              v-if="item.showProgress"
-              class="mt-1"
-              :color="item.progressColor"
-              height="4"
-              :model-value="item.progressValue"
-              rounded
-            />
-          </v-sheet>
-        </v-col>
-      </v-row>
-    </v-container>
+
+<v-container fluid>
+  <v-row dense>
+    <v-col
+      v-for="(item, index) in missionTelemetryDisplay"
+      :key="'mission-' + index"
+      cols="6"
+    >
+      <v-card
+        class="text-center"
+        color="indigo"
+        rounded
+        elevation="2"
+      >
+        <v-card-text class="py-2">
+          <div class="font-weight-bold text-h5 text-white">{{ item.value }}</div>
+          <div class="text-caption text-white">{{ item.label }}</div>
+          <!-- Progress bar for mission progress -->
+          <!--
+          <v-progress-linear
+            v-if="item.showProgress"
+            class="mt-1"
+            :color="item.progressColor"
+            height="4"
+            :model-value="item.progressValue"
+            rounded
+          />
+          -->
+        </v-card-text>
+      </v-card>
+    </v-col>
+  </v-row>
+</v-container>
 
     <!--    <v-card-text>-->
     <!--      <div class="d-flex justify-space-between mb-2">-->
@@ -214,7 +224,7 @@
       showProgress: false,
     },
     {
-      value: props.telemetryData.mission.next_wp_seq,
+      value: props.telemetryData.mission.next_wp_seq ?? 'N/A',
       label: 'Next WP',
       showProgress: false,
     },

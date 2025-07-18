@@ -15,13 +15,12 @@
       />
 
       <DroneStatusCard
-        :telemetry-data="telemetryData"
+        :telemetry-data="droneTelemetryData"
       />
 
       <VehicleStatusCard
+        :vehicle-telemetry-data="vehicleTelemetryData"
         :vehicle-location="vehicleLocation"
-        :vehicle-speed="vehicleSpeed"
-        :vehicle-state="vehicleState"
       />
 
       <OperatorInstructionsCard
@@ -45,40 +44,17 @@
 
 
   const props = defineProps({
-    telemetryData: {
+    droneTelemetryData: {
       type: Object,
       required: true,
-      default: () => ({
-        position: {
-          latitude: null,
-          longitude: null,
-          altitude_msl: 0,
-          relative_altitude: 0,
-        },
-        velocity: {
-          vx: 0,
-          vy: 0,
-          vz: 0,
-          ground_speed: 0,
-          heading: 0,
-        },
-        battery: {
-          voltage: 0,
-          remaining_percentage: 100,
-        },
-        mission: {
-          current_wp_seq: 0,
-          next_wp_seq: 1,
-          distance_to_wp: 0,
-          progress_percentage: 0,
-        },
-      }),
+    },
+    vehicleTelemetryData: {
+      type: Object,
+      required: true,
     },
     distance: { type: Number, required: true },
     status: { type: String, required: true },
     statusColor: { type: Object, required: true },
-    vehicleSpeed: { type: Number, required: true },
-    vehicleState: { type: String, required: true },
     vehicleLocation: { type: String, required: true },
     instructions: { type: String, required: true },
     instructionCard: { type: Object, required: true },

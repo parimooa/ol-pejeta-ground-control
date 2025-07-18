@@ -1,7 +1,7 @@
 import time
 from typing import Dict, Any, Optional, List, Callable
 import json
-
+import math
 from backend.models.vehicle import Vehicle
 from backend.core.flight_modes import FlightMode
 from backend.config import get_vehicle_settings
@@ -263,5 +263,4 @@ class VehicleService:
             return False
 
 
-# Create a singleton instance
 vehicle_service = VehicleService()

@@ -369,6 +369,11 @@
                 snackbarColor.value = 'warning'
                 showSnackbar.value = true
                 break
+              case 'survey_completed':
+                snackbarMessage.value = 'Survey mission completed successfully! 🎉'
+                snackbarColor.value = 'success'
+                showSnackbar.value = true
+                break
             }
             return; // Stop processing since this wasn't a telemetry message
           }

@@ -25,6 +25,8 @@ class CoordinationService:
         self._survey_button_enabled = False
         self._last_proximity_check = 0
         self._proximity_check_cooldown = 2  # seconds
+        self._last_survey_mode_state = False  # Track previous survey state
+        self._survey_initiated_by_us = False  # Track if we initiated the current survey
 
     def _calculate_distance(self, pos1, pos2) -> float:
         """Calculate distance between two GPS coordinates using Haversine formula."""
@@ -47,8 +49,12 @@ class CoordinationService:
         return R * c
 
     def _is_drone_surveying(self, drone: "Vehicle") -> bool:
-        """Check if the drone is currently in survey mode (AUTO mode)."""
+        """Check if the drone is currently actively surveying."""
         if not drone or not drone.vehicle:
+            return False
+
+        # Primary requirement: Survey must be initiated by user from frontend
+        if not self._survey_initiated_by_us:
             return False
 
         # Get current drone telemetry
@@ -56,9 +62,15 @@ class CoordinationService:
         if not telemetry:
             return False
 
-        # Check if drone is in AUTO mode (survey mode)
+        # Secondary requirement: Drone must be in AUTO mode when surveying
         current_mode = telemetry.get("custom_mode")
-        return current_mode == FlightMode.AUTO.value
+        if current_mode != FlightMode.AUTO.value:
+            print(f"DEBUG: Survey initiated by us but drone not in AUTO mode (mode: {current_mode})")
+            return False
+
+        # Both conditions met: user initiated survey AND drone is in AUTO mode
+        print(f"DEBUG: Active survey detected - initiated by us: {self._survey_initiated_by_us}, AUTO mode: True")
+        return True
 
     def _check_proximity_and_update_ui(self, distance: float):
         """Check proximity and update survey button state."""
@@ -116,7 +128,19 @@ class CoordinationService:
 
             # Check if drone is currently surveying
             is_surveying = self._is_drone_surveying(drone)
+            
+            # Check for survey completion (transition from surveying to not surveying)
+            if self._last_survey_mode_state and not is_surveying:
+                print("🎉 Survey completed - drone switched back to GUIDED mode")
+                # Clear the survey flag when survey completes
+                self._survey_initiated_by_us = False
+                telemetry_manager.broadcast_event({
+                    "event": "survey_completed",
+                    "message": "Survey mission completed successfully"
+                })
+            
             self._survey_mode_detected = is_surveying
+            self._last_survey_mode_state = is_surveying
 
             print(
                 f"Distance: {distance:.1f}m | Surveying: {is_surveying} | Following: {self._is_following}"
@@ -164,6 +188,7 @@ class CoordinationService:
                     )
                     # Abandon survey and switch to follow
                     survey_service.scan_abandoned = True
+                    self._survey_initiated_by_us = False  # Clear survey flag when abandoning
 
                     if self._initiate_follow_sequence(drone):
                         self._is_following = True
@@ -322,12 +347,18 @@ class CoordinationService:
             }
         )
 
+        # Mark that we initiated this survey
+        self._survey_initiated_by_us = True
+
         # Execute survey with constrained pattern
         success = await survey_service.execute_proximity_survey(
             survey_center,
             max_distance_from_center=self.max_distance
             * 0.8,  # 80% of max distance for safety
         )
+
+        # Clear the flag when survey completes
+        self._survey_initiated_by_us = False
 
         return success
 
@@ -355,6 +386,9 @@ class CoordinationService:
         self._is_active = False
         self._is_following = False
         self._survey_mode_detected = False
+        self._last_survey_mode_state = False
+        self._survey_button_enabled = False
+        self._survey_initiated_by_us = False
         telemetry_manager.broadcast_event({"event": "coordination_stopped"})
 
         if self._thread:

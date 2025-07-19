@@ -460,7 +460,7 @@ class Vehicle:
         return False
 
     def takeoff(self, altitude_meters: float) -> bool:
-        """Commands the vehicle to takeoff to a specific altitude."""
+        """Commands the vehicle to take off to a specific altitude."""
         if not self.vehicle:
             print("Vehicle not connected. Cannot takeoff.")
             return False
@@ -519,13 +519,13 @@ class Vehicle:
                     type="MISSION_ACK", blocking=False, timeout=1
                 )
                 if msg and msg.type == mavutil.mavlink.MAV_MISSION_ACCEPTED:
-                    print("✅ Mission cleared successfully")
+                    print("Mission cleared successfully")
                     return True
                 elif msg and msg.type != mavutil.mavlink.MAV_MISSION_ACCEPTED:
-                    print(f"❌ Mission clear failed with error: {msg.type}")
+                    print(f"Mission clear failed with error: {msg.type}")
                     return False
 
-            print("⚠️ Mission clear acknowledgment timeout")
+            print("Mission clear acknowledgment timeout")
             return False
 
         except Exception as e:
@@ -665,16 +665,34 @@ class Vehicle:
             return False
 
         try:
-            # Check if we're in AUTO mode and mission is complete
+            # Get current telemetry
             telemetry = self.get_current_telemetry()
             if not telemetry:
                 return False
 
-            # Check mission item reached messages
+            # Method 1: Check mission progress percentage
+            mission_progress = telemetry.get("mission_progress_percentage", 0)
+            if mission_progress >= 100:
+                print(f"Mission complete via progress: {mission_progress}%")
+                return True
+
+            # Method 2: Check if we've reached the last waypoint
+            current_wp = telemetry.get("current_mission_wp_seq")
+            total_wps = telemetry.get("mission_total_waypoints", 0)
+
+            if current_wp is not None and total_wps > 0:
+                # If current waypoint is the last waypoint (or beyond), mission is complete
+                if current_wp >= (total_wps - 1):
+                    print(f"Mission complete via waypoint: {current_wp}/{total_wps}")
+                    return True
+
+            # Method 3: Check mission item reached messages
             msg = self.vehicle.recv_match(type="MISSION_ITEM_REACHED", blocking=False)
-            if msg and hasattr(self, "mission_total_waypoints"):
+            if msg and total_wps > 0:
                 # If we've reached the last waypoint, mission is complete
-                return msg.seq >= (self.mission_total_waypoints - 1)
+                if msg.seq >= (total_wps - 1):
+                    print(f"Mission complete via MISSION_ITEM_REACHED: {msg.seq}/{total_wps}")
+                    return True
 
             return False
 
@@ -721,10 +739,6 @@ class Vehicle:
             self.last_telemetry["guided_enabled"] = bool(
                 msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_GUIDED_ENABLED
             )
-
-        # --- Start of New/Modified Section ---
-        # This block ensures that every telemetry packet sent to the frontend
-        # contains the complete and most up-to-date mission status.
 
         # Add waypoint data to every packet for consistency
         self.last_telemetry["mission_total_waypoints"] = len(self.mission_waypoints)

@@ -203,6 +203,10 @@ class SurveyService:
             # Check if mission is complete
             if drone_vehicle.is_mission_complete():
                 print("✅ Lawnmower scan completed successfully!")
+                # Automatically switch back to GUIDED mode
+                print("🎮 Switching drone back to GUIDED mode...")
+                drone_vehicle.set_mode(FlightMode.GUIDED)
+                mission_complete = True
                 break
 
             # Monitor car position if car_vehicle is provided
@@ -251,17 +255,19 @@ class SurveyService:
             print("✅ Drone ready to follow car position")
             return False  # Scan was abandoned
 
-        # If we get here, assume mission completed successfully
-        print("\n✅ Lawnmower scan completed successfully!")
-
-        # Switch back to GUIDED mode for manual control
-        print("🎮 Switching drone back to GUIDED mode...")
-        if not drone_vehicle.set_mode(FlightMode.GUIDED):
-            print("❌ Failed to switch drone back to GUIDED mode.")
+        elif mission_complete:
+            # Mission completed successfully - already switched to GUIDED mode above
+            await asyncio.sleep(2)
+            return True
+        else:
+            # Timeout occurred without completion
+            print("\n⚠️ Lawnmower scan timed out!")
+            print("🎮 Switching drone back to GUIDED mode...")
+            if not drone_vehicle.set_mode(FlightMode.GUIDED):
+                print("❌ Failed to switch drone back to GUIDED mode.")
+                return False
+            await asyncio.sleep(2)
             return False
-
-        await asyncio.sleep(2)
-        return True
 
     async def execute_proximity_survey(
         self,
@@ -343,6 +349,7 @@ class SurveyService:
         # Monitor mission progress
         print("🚁 Drone executing proximity survey...")
         scan_start_time = time.time()
+        mission_complete = False
 
         # Store initial car position
         initial_car_pos = await car_vehicle.position()
@@ -350,7 +357,11 @@ class SurveyService:
         while time.time() - scan_start_time < timeout:
             # Check if mission is complete
             if drone_vehicle.is_mission_complete():
-                print("✅ Mission completed successfully!")
+                print("✅ Proximity survey completed successfully!")
+                # Automatically switch back to GUIDED mode
+                print("🎮 Switching drone back to GUIDED mode...")
+                drone_vehicle.set_mode(FlightMode.GUIDED)
+                mission_complete = True
                 break
 
             # Monitor car movement from survey center
@@ -380,11 +391,17 @@ class SurveyService:
             print(f"\n🚨 PROXIMITY SURVEY ABANDONED!")
             drone_vehicle.set_mode(FlightMode.GUIDED)
             return False
-
-        print("\n✅ Proximity survey completed successfully!")
-        drone_vehicle.set_mode(FlightMode.GUIDED)
-        await asyncio.sleep(2)
-        return True
+        elif mission_complete:
+            # Mission completed successfully - already switched to GUIDED mode above
+            await asyncio.sleep(2)
+            return True
+        else:
+            # Timeout occurred without completion
+            print("\n⚠️ Proximity survey timed out!")
+            print("🎮 Switching drone back to GUIDED mode...")
+            drone_vehicle.set_mode(FlightMode.GUIDED)
+            await asyncio.sleep(2)
+            return False
 
     async def _generate_constrained_lawnmower_waypoints(
         self, center_point: Dict, max_distance: float

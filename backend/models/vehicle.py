@@ -742,7 +742,21 @@ class Vehicle:
                 continue
             try:
                 telemetry = self.get_current_telemetry()
-                self._telemetry_callback(telemetry)
+                
+                # Only send telemetry if we have a recent heartbeat
+                heartbeat_timestamp = telemetry.get("heartbeat_timestamp")
+                if heartbeat_timestamp:
+                    current_time = time.time()
+                    time_since_heartbeat = current_time - heartbeat_timestamp
+                    
+                    # Only send telemetry if the heartbeat is less than 10 seconds old
+                    if time_since_heartbeat < 10.0:
+                        self._telemetry_callback(telemetry)
+                    else:
+                        print(f"{self.vehicle_type}: No recent heartbeat ({time_since_heartbeat:.1f}s ago), not sending telemetry")
+                else:
+                    print(f"{self.vehicle_type}: No heartbeat received, not sending telemetry")
+                    
             except Exception as e:
                 print(f"Error in telemetry loop: {e}")
             time.sleep(0.1)  # 10Hz update rate, adjust as needed

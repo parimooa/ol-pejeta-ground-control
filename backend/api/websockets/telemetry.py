@@ -83,6 +83,20 @@ class TelemetryWebsocketManager:
         def telemetry_callback(data: Dict[str, Any]):
             """Callback function to handle telemetry data."""
             try:
+                # Additional heartbeat check - only process telemetry with recent heartbeat
+                heartbeat_timestamp = data.get("heartbeat_timestamp")
+                if not heartbeat_timestamp:
+                    print(f"{vehicle_type}: Telemetry callback received data without heartbeat, skipping")
+                    return
+                
+                import time
+                current_time = time.time()
+                time_since_heartbeat = current_time - heartbeat_timestamp
+                
+                if time_since_heartbeat > 10.0:
+                    print(f"{vehicle_type}: Telemetry callback received stale heartbeat ({time_since_heartbeat:.1f}s old), skipping")
+                    return
+                
                 # Convert raw data to Pydantic model
                 telemetry = TelemetryData.from_vehicle_data(data)
 

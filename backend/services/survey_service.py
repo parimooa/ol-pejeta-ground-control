@@ -159,7 +159,8 @@ class SurveyService:
             )
 
         # Upload mission to drone
-        upload_success = await drone_vehicle.upload_mission(waypoint_objects)
+        print("\n--- Uploading Lawnmower Mission to Drone ---")
+        upload_success = drone_vehicle.upload_mission(waypoint_objects)
         if not upload_success:
             print("❌ Failed to upload scan mission to drone.")
             return False
@@ -171,17 +172,21 @@ class SurveyService:
             )
 
         # Switch to AUTO mode to execute the mission
-        if not await drone_vehicle.set_auto_mode():
+        from backend.core.flight_modes import FlightMode
+
+        if not drone_vehicle.set_mode(FlightMode.AUTO):
             print("❌ Failed to set drone to AUTO mode.")
             return False
 
         # Start the mission
-        if not await drone_vehicle.start_mission():
+        if not drone_vehicle.start_mission():
             print("❌ Failed to start drone mission.")
             return False
 
+        print("✅ Drone executing lawnmower scan mission")
+
         # Monitor mission progress and car position
-        print("🚁 Drone executing scan mission in AUTO mode...")
+        print("Drone executing scan mission in AUTO mode...")
         scan_start_time = time.time()
         mission_complete = False
 
@@ -195,6 +200,11 @@ class SurveyService:
                 )
 
         while time.time() - scan_start_time < timeout:
+            # Check if mission is complete
+            if drone_vehicle.is_mission_complete():
+                print("✅ Lawnmower scan completed successfully!")
+                break
+
             # Monitor car position if car_vehicle is provided
             if car_vehicle and initial_car_pos:
                 current_car_pos = await car_vehicle.position()
@@ -214,7 +224,7 @@ class SurveyService:
 
                         # Set global flag and switch to GUIDED mode
                         self.scan_abandoned = True
-                        await drone_vehicle.set_guided_mode()
+                        drone_vehicle.set_mode(FlightMode.GUIDED)
                         break
                     else:
                         # Show car monitoring status occasionally
@@ -226,10 +236,6 @@ class SurveyService:
                                 flush=True,
                             )
 
-            # Check if mission is complete (simplified - you may need to implement proper mission status checking)
-            # This would require checking mission current item or mission complete status
-
-            # For now, just check if timeout occurred
             await asyncio.sleep(2)
 
         # Handle different completion scenarios
@@ -238,7 +244,7 @@ class SurveyService:
             print("🚁 Switching drone to GUIDED mode...")
 
             # Switch to GUIDED mode immediately
-            if not await drone_vehicle.set_guided_mode():
+            if not drone_vehicle.set_mode(FlightMode.GUIDED):
                 print("❌ Failed to switch drone to GUIDED mode.")
                 return False
 
@@ -250,12 +256,192 @@ class SurveyService:
 
         # Switch back to GUIDED mode for manual control
         print("🎮 Switching drone back to GUIDED mode...")
-        if not await drone_vehicle.set_guided_mode():
+        if not drone_vehicle.set_mode(FlightMode.GUIDED):
             print("❌ Failed to switch drone back to GUIDED mode.")
             return False
 
         await asyncio.sleep(2)
         return True
+
+    async def execute_proximity_survey(
+        self,
+        center_waypoint: Dict,
+        max_distance_from_center: float = 400,
+        tolerance: float = 3.0,
+        timeout: int = 320,
+    ) -> bool:
+        """Execute a proximity survey constrained to stay within max_distance_from_center."""
+        self.scan_abandoned = False
+
+        # Get drone vehicle
+        drone_vehicle = vehicle_service.get_vehicle("drone")
+        car_vehicle = vehicle_service.get_vehicle("car")
+
+        if not drone_vehicle or not car_vehicle:
+            return False
+
+        print(
+            f"\n--- Generating Proximity Survey Pattern (max {max_distance_from_center}m from center) ---"
+        )
+
+        # Generate constrained lawnmower pattern
+        scan_waypoints = await self._generate_constrained_lawnmower_waypoints(
+            center_waypoint, max_distance_from_center
+        )
+
+        num_scan_points = len(scan_waypoints)
+        print(f"✅ Generated {num_scan_points} waypoints for proximity survey.")
+
+        # Add loiter waypoint at the end
+        loiter_waypoint = {
+            "lat": center_waypoint["lat"],
+            "lon": center_waypoint["lon"],
+            "alt": center_waypoint["alt"],
+        }
+        scan_waypoints.append(loiter_waypoint)
+
+        # Convert to Waypoint objects for upload
+        waypoint_objects = []
+        for i, wp in enumerate(scan_waypoints):
+            waypoint_objects.append(
+                Waypoint(
+                    seq=i,
+                    lat=wp["lat"],
+                    lon=wp["lon"],
+                    alt=wp["alt"],
+                    command=16,  # MAV_CMD_NAV_WAYPOINT
+                    param1=0,
+                    param2=0,
+                    param3=0,
+                    param4=0,
+                )
+            )
+
+        # Upload mission to drone
+        print("\n--- Uploading Proximity Survey Mission to Drone ---")
+        upload_success = drone_vehicle.upload_mission(waypoint_objects)
+        if not upload_success:
+            print("❌ Failed to upload proximity survey mission to drone.")
+            return False
+
+        print("\n--- Executing Proximity Survey in AUTO Mode ---")
+
+        # Switch to AUTO mode using existing set_mode method
+        from backend.core.flight_modes import FlightMode
+
+        if not drone_vehicle.set_mode(FlightMode.AUTO):
+            print("❌ Failed to set drone to AUTO mode.")
+            return False
+
+        # Start the mission
+        if not drone_vehicle.start_mission():
+            print("❌ Failed to start drone mission.")
+            return False
+
+        print("✅ Drone executing proximity survey mission")
+
+        # Monitor mission progress
+        print("🚁 Drone executing proximity survey...")
+        scan_start_time = time.time()
+
+        # Store initial car position
+        initial_car_pos = await car_vehicle.position()
+
+        while time.time() - scan_start_time < timeout:
+            # Check if mission is complete
+            if drone_vehicle.is_mission_complete():
+                print("✅ Mission completed successfully!")
+                break
+
+            # Monitor car movement from survey center
+            if car_vehicle and initial_car_pos:
+                current_car_pos = await car_vehicle.position()
+                if current_car_pos:
+                    car_distance_from_center = await self.calculate_distance(
+                        center_waypoint, current_car_pos
+                    )
+
+                    # Check if car moved too far from center (500m limit)
+                    if car_distance_from_center > 500:
+                        print(f"\n🚨 CAR MOVED TOO FAR FROM SURVEY CENTER!")
+                        print(
+                            f"🚗 Car is {car_distance_from_center:.1f}m from center (max: 500m)"
+                        )
+                        print(f"🚁 Abandoning proximity survey...")
+
+                        self.scan_abandoned = True
+                        drone_vehicle.set_mode(FlightMode.GUIDED)
+                        break
+
+            await asyncio.sleep(2)
+
+        # Handle completion
+        if self.scan_abandoned:
+            print(f"\n🚨 PROXIMITY SURVEY ABANDONED!")
+            drone_vehicle.set_mode(FlightMode.GUIDED)
+            return False
+
+        print("\n✅ Proximity survey completed successfully!")
+        drone_vehicle.set_mode(FlightMode.GUIDED)
+        await asyncio.sleep(2)
+        return True
+
+    async def _generate_constrained_lawnmower_waypoints(
+        self, center_point: Dict, max_distance: float
+    ) -> List[Dict]:
+        """Generate lawnmower pattern constrained within max_distance from center."""
+        scan_waypoints = []
+
+        # Calculate safe pattern dimensions to stay within max_distance
+        # Use 80% of max distance for pattern radius for safety margin
+        safe_radius = max_distance * 0.4  # Half the distance for radius
+
+        # Adjust pattern size based on constraint
+        pattern_length = min(PATTERN_LENGTH, safe_radius * 1.5)
+        pattern_width = min(MAX_RADIUS * 2, safe_radius * 1.5)
+        swath_width = SWATH_WIDTH
+
+        print(
+            f"Constrained pattern: {pattern_length}m x {pattern_width}m (max distance: {max_distance}m)"
+        )
+
+        num_stripes = int(pattern_width / swath_width)
+
+        for i in range(num_stripes + 1):
+            y_offset = -pattern_width / 2 + (i * swath_width)
+            x_start, x_end = -pattern_length / 2, pattern_length / 2
+            if i % 2 != 0:
+                x_start, x_end = x_end, x_start
+
+            for x_offset in [x_start, x_end]:
+                # Convert meters to lat/lon offset
+                dlat, dlon = self._meters_to_latlon_offset(
+                    x_offset, y_offset, center_point["lat"]
+                )
+
+                waypoint_lat = center_point["lat"] + dlat
+                waypoint_lon = center_point["lon"] + dlon
+
+                # Verify waypoint is within constraint
+                waypoint_dict = {"lat": waypoint_lat, "lon": waypoint_lon}
+                distance_from_center = await self.calculate_distance(
+                    center_point, waypoint_dict
+                )
+
+                if distance_from_center <= max_distance:
+                    scan_waypoints.append(
+                        {
+                            "lat": waypoint_lat,
+                            "lon": waypoint_lon,
+                            "alt": center_point["alt"],
+                        }
+                    )
+                else:
+                    print(
+                        f"Skipping waypoint {distance_from_center:.1f}m from center (exceeds {max_distance}m)"
+                    )
+
+        return scan_waypoints
 
     async def get_next_waypoint_info(self, vehicle_type: str = "car") -> Optional[Dict]:
         """Get information about the next waypoint"""

@@ -20,3 +20,30 @@ async def stop_coordination() -> Dict[str, Any]:
     """Deactivates the coordination service."""
     coordination_service.stop()
     return {"status": "success", "message": "Coordination service stopped."}
+
+
+@router.get("/status")
+async def get_coordination_status() -> Dict[str, Any]:
+    """Get current coordination service status."""
+    return {
+        "active": coordination_service.is_active(),
+        "following": coordination_service.is_following(),
+        "surveying": coordination_service.is_surveying(),
+        "survey_button_enabled": coordination_service.is_survey_button_enabled(),
+    }
+
+
+@router.post("/initiate-proximity-survey")
+async def initiate_proximity_survey() -> Dict[str, Any]:
+    """Initiate a proximity survey at current vehicle position."""
+    try:
+        success = await coordination_service.initiate_proximity_survey()
+        if success:
+            return {"status": "success", "message": "Proximity survey initiated."}
+        else:
+            return {
+                "status": "error",
+                "message": "Failed to initiate proximity survey.",
+            }
+    except Exception as e:
+        return {"status": "error", "message": f"Error initiating survey: {str(e)}"}

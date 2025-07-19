@@ -319,7 +319,7 @@ class Vehicle:
 
         # Wait for confirmation
         start_time = time.time()
-        timeout_duration = 10
+        timeout_duration = 15
         while time.time() - start_time < timeout_duration:
             with self._lock:
                 current_mode = self.last_telemetry.get("custom_mode")
@@ -498,6 +498,189 @@ class Vehicle:
 
         print(f"Failed to reach takeoff altitude within {timeout_duration}s.")
         return False
+
+    def clear_mission(self) -> bool:
+        """Clear the current mission from the drone."""
+        if not self.vehicle:
+            print("Vehicle not connected. Cannot clear mission.")
+            return False
+
+        print("Clearing existing mission...")
+        try:
+            # Send mission clear command
+            self.vehicle.mav.mission_clear_all_send(
+                self.vehicle.target_system, self.vehicle.target_component
+            )
+
+            # Wait for acknowledgment
+            start_time = time.time()
+            while time.time() - start_time < 5:
+                msg = self.vehicle.recv_match(
+                    type="MISSION_ACK", blocking=False, timeout=1
+                )
+                if msg and msg.type == mavutil.mavlink.MAV_MISSION_ACCEPTED:
+                    print("✅ Mission cleared successfully")
+                    return True
+                elif msg and msg.type != mavutil.mavlink.MAV_MISSION_ACCEPTED:
+                    print(f"❌ Mission clear failed with error: {msg.type}")
+                    return False
+
+            print("⚠️ Mission clear acknowledgment timeout")
+            return False
+
+        except Exception as e:
+            print(f"Error clearing mission: {e}")
+            return False
+
+    def upload_mission(self, waypoints) -> bool:
+        """Upload a mission to the drone."""
+        if not self.vehicle:
+            print("Vehicle not connected. Cannot upload mission.")
+            return False
+
+        if not waypoints:
+            print("No waypoints provided for mission upload.")
+            return False
+
+        print(f"Uploading mission with {len(waypoints)} waypoints...")
+
+        try:
+            # First clear any existing mission
+            if not self.clear_mission():
+                print("Failed to clear existing mission")
+                return False
+
+            # Send mission count
+            self.vehicle.mav.mission_count_send(
+                self.vehicle.target_system,
+                self.vehicle.target_component,
+                len(waypoints),
+            )
+
+            # Wait for mission request
+            for i, waypoint in enumerate(waypoints):
+                print(f"Uploading waypoint {i+1}/{len(waypoints)}")
+
+                # Wait for waypoint request
+                start_time = time.time()
+                while time.time() - start_time < 10:
+                    msg = self.vehicle.recv_match(
+                        type="MISSION_REQUEST", blocking=False, timeout=1
+                    )
+                    if msg and msg.seq == i:
+                        break
+                else:
+                    print(f"Timeout waiting for waypoint {i} request")
+                    return False
+
+                # Send waypoint
+                self.vehicle.mav.mission_item_int_send(
+                    self.vehicle.target_system,
+                    self.vehicle.target_component,
+                    waypoint.seq,  # seq
+                    mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,  # frame
+                    waypoint.command,  # command
+                    0,  # current - 0 for all waypoints except first
+                    1,  # autocontinue
+                    waypoint.param1,  # param1
+                    waypoint.param2,  # param2
+                    waypoint.param3,  # param3
+                    waypoint.param4,  # param4
+                    int(waypoint.lat * 1e7),  # x (latitude)
+                    int(waypoint.lon * 1e7),  # y (longitude)
+                    waypoint.alt,  # z (altitude)
+                )
+
+            # Wait for mission ACK
+            start_time = time.time()
+            while time.time() - start_time < 10:
+                msg = self.vehicle.recv_match(
+                    type="MISSION_ACK", blocking=False, timeout=1
+                )
+                if msg:
+                    if msg.type == mavutil.mavlink.MAV_MISSION_ACCEPTED:
+                        print("✅ Mission uploaded successfully")
+                        # Update local mission data
+                        self.mission_total_waypoints = len(waypoints)
+                        self.fetch_mission_waypoints()  # Refresh local waypoint data
+                        return True
+                    else:
+                        print(f"❌ Mission upload failed with error: {msg.type}")
+                        return False
+
+            print("⚠️ Mission upload acknowledgment timeout")
+            return False
+
+        except Exception as e:
+            print(f"Error uploading mission: {e}")
+            return False
+
+    def start_mission(self) -> bool:
+        """Start the current mission on the drone."""
+        if not self.vehicle:
+            print("Vehicle not connected. Cannot start mission.")
+            return False
+
+        print("Starting mission...")
+        try:
+            # Send mission start command
+            self.vehicle.mav.command_long_send(
+                self.vehicle.target_system,
+                self.vehicle.target_component,
+                mavutil.mavlink.MAV_CMD_MISSION_START,
+                0,  # confirmation
+                0,  # param1 - first item
+                0,  # param2 - last item
+                0,
+                0,
+                0,
+                0,
+                0,  # params 3-7
+            )
+
+            # Wait for command acknowledgment
+            start_time = time.time()
+            while time.time() - start_time < 5:
+                msg = self.vehicle.recv_match(
+                    type="COMMAND_ACK", blocking=False, timeout=1
+                )
+                if msg and msg.command == mavutil.mavlink.MAV_CMD_MISSION_START:
+                    if msg.result == mavutil.mavlink.MAV_RESULT_ACCEPTED:
+                        print("✅ Mission started successfully")
+                        return True
+                    else:
+                        print(f"❌ Mission start failed with result: {msg.result}")
+                        return False
+
+            print("⚠️ Mission start acknowledgment timeout")
+            return False
+
+        except Exception as e:
+            print(f"Error starting mission: {e}")
+            return False
+
+    def is_mission_complete(self) -> bool:
+        """Check if the current mission is complete."""
+        if not self.vehicle:
+            return False
+
+        try:
+            # Check if we're in AUTO mode and mission is complete
+            telemetry = self.get_current_telemetry()
+            if not telemetry:
+                return False
+
+            # Check mission item reached messages
+            msg = self.vehicle.recv_match(type="MISSION_ITEM_REACHED", blocking=False)
+            if msg and hasattr(self, "mission_total_waypoints"):
+                # If we've reached the last waypoint, mission is complete
+                return msg.seq >= (self.mission_total_waypoints - 1)
+
+            return False
+
+        except Exception as e:
+            print(f"Error checking mission completion: {e}")
+            return False
 
     def _update_telemetry_state(self, msg, msg_type):
         """Updates the last_telemetry dictionary based on an incoming MAVLink message."""
@@ -742,21 +925,25 @@ class Vehicle:
                 continue
             try:
                 telemetry = self.get_current_telemetry()
-                
+
                 # Only send telemetry if we have a recent heartbeat
                 heartbeat_timestamp = telemetry.get("heartbeat_timestamp")
                 if heartbeat_timestamp:
                     current_time = time.time()
                     time_since_heartbeat = current_time - heartbeat_timestamp
-                    
+
                     # Only send telemetry if the heartbeat is less than 10 seconds old
                     if time_since_heartbeat < 10.0:
                         self._telemetry_callback(telemetry)
                     else:
-                        print(f"{self.vehicle_type}: No recent heartbeat ({time_since_heartbeat:.1f}s ago), not sending telemetry")
+                        print(
+                            f"{self.vehicle_type}: No recent heartbeat ({time_since_heartbeat:.1f}s ago), not sending telemetry"
+                        )
                 else:
-                    print(f"{self.vehicle_type}: No heartbeat received, not sending telemetry")
-                    
+                    print(
+                        f"{self.vehicle_type}: No heartbeat received, not sending telemetry"
+                    )
+
             except Exception as e:
                 print(f"Error in telemetry loop: {e}")
             time.sleep(0.1)  # 10Hz update rate, adjust as needed

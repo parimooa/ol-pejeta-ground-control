@@ -40,6 +40,8 @@
       :drone-telemetry-data="droneData"
       :vehicle-telemetry-data="vehicleData"
       :vehicle-location="vehicleLocation"
+      :survey-button-enabled="surveyButtonEnabled"
+      @initiate-survey="initiateSurvey"
     />
 
     <v-main>
@@ -183,6 +185,7 @@
   // Coordination state
   const isCoordinationActive = ref(false)
   const isDroneFollowing = ref(false)
+  const surveyButtonEnabled = ref(false)
 
 
   // Vehicle info derived from telemetry data
@@ -356,6 +359,15 @@
                 snackbarColor.value = 'error'
                 showSnackbar.value = true
                 // Do not change isCoordinationActive or isDroneFollowing, as the service is still running
+                break
+              case 'survey_button_state_changed':
+                surveyButtonEnabled.value = data.enabled
+                console.log(`Survey button ${data.enabled ? 'enabled' : 'disabled'} at distance ${data.distance}m`)
+                break
+              case 'survey_abandoned':
+                snackbarMessage.value = `Survey abandoned: ${data.reason}`
+                snackbarColor.value = 'warning'
+                showSnackbar.value = true
                 break
             }
             return; // Stop processing since this wasn't a telemetry message
@@ -534,6 +546,34 @@
       showSnackbar.value = true
       missionActive.value = false
       disconnectWebSocket()
+    }
+  }
+
+  const initiateSurvey = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/coordination/initiate-proximity-survey', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to initiate survey')
+      }
+
+      snackbarMessage.value = 'Proximity survey initiated successfully'
+      snackbarColor.value = 'success'
+      showSnackbar.value = true
+
+    } catch (error) {
+      console.error('Error initiating survey:', error)
+      snackbarMessage.value = `Error initiating survey: ${error.message}`
+      snackbarColor.value = 'error'
+      showSnackbar.value = true
     }
   }
 

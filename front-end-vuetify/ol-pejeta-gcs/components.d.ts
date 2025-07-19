@@ -17,7 +17,6 @@ declare module 'vue' {
     InfoPanel: typeof import('./src/components/InfoPanel.vue')['default']
     InstructionsCard: typeof import('./src/components/panels/InstructionsCard.vue')['default']
     MapComponent: typeof import('./src/components/MapComponent.vue')['default']
-    MapComponentNotUsed: typeof import('./src/components/MapComponent-not-used.vue')['default']
     MapContainer: typeof import('./src/components/MapContainer.vue')['default']
     MissionProgressCard: typeof import('./src/components/info-panel/MissionProgressCard.vue')['default']
     OperatorInstructionsCard: typeof import('./src/components/info-panel/OperatorInstructionsCard.vue')['default']
@@ -26,6 +25,7 @@ declare module 'vue' {
     RouterView: typeof import('vue-router')['RouterView']
     SidePanel: typeof import('./src/components/SidePanel.vue')['default']
     StatusCard: typeof import('./src/components/panels/StatusCard.vue')['default']
+    SurveyButtonCard: typeof import('./src/components/info-panel/SurveyButtonCard.vue')['default']
     VehicleStatusCard: typeof import('./src/components/info-panel/VehicleStatusCard.vue')['default']
     VehicleStatusCard1: typeof import('./src/components/panels/VehicleStatusCard1.vue')['default']
   }

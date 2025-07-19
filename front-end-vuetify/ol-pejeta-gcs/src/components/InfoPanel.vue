@@ -23,6 +23,12 @@
         :vehicle-location="vehicleLocation"
       />
 
+      <SurveyButtonCard
+        :survey-button-enabled="surveyButtonEnabled"
+        :distance="distance"
+        @initiate-survey="$emit('initiate-survey')"
+      />
+
       <OperatorInstructionsCard
         :instruction-card="instructionCard"
         :instructions="instructions"
@@ -39,6 +45,7 @@
   import DistanceStatusCard from './info-panel/DistanceStatusCard.vue'
   import DroneStatusCard from './info-panel/DroneStatusCard.vue'
   import VehicleStatusCard from './info-panel/VehicleStatusCard.vue'
+  import SurveyButtonCard from './info-panel/SurveyButtonCard.vue'
   import OperatorInstructionsCard from './info-panel/OperatorInstructionsCard.vue'
   import MissionProgressCard from './info-panel/MissionProgressCard.vue'
 
@@ -59,6 +66,7 @@
     instructions: { type: String, required: true },
     instructionCard: { type: Object, required: true },
     missionSteps: { type: Array, required: true },
+    surveyButtonEnabled: { type: Boolean, default: false },
   })
 </script>
 

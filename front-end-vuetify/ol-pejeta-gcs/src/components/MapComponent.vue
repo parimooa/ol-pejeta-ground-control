@@ -8,37 +8,6 @@
         Long: {{ formatCoordinate(currentPosition.lng, 'lng') }}
       </div>
 
-      <div class="search-container pa-2">
-        <v-text-field
-          v-model="searchQuery"
-          class="search-field"
-          density="compact"
-          hide-details
-          placeholder="Search location.111.."
-          prepend-inner-icon="mdi-magnify"
-          variant="outlined"
-        />
-      </div>
-
-      <div class="control-buttons">
-        <v-btn
-          class="mr-2"
-          color="primary"
-          prepend-icon="mdi-play"
-          variant="elevated"
-          @click="$emit('mission-start')"
-        >
-          Mission Start
-        </v-btn>
-        <v-btn
-          color="error"
-          prepend-icon="mdi-close"
-          variant="elevated"
-          @click="$emit('emergency-stop')"
-        >
-          Emergency Stop
-        </v-btn>
-      </div>
     </div>
   </div>
 </template>
@@ -70,9 +39,8 @@
       },
     },
 
-    emits: ['mission-start', 'emergency-stop'],
 
-    setup (props, { emit }) {
+    setup (props) {
       // Map reference
       const mapElement = ref(null)
       let map = null

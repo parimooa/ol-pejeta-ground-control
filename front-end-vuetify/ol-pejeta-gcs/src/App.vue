@@ -4,18 +4,60 @@
       <div class="text-h6 font-weight-medium">Ol Pejeta GCS</div>
       <v-spacer />
 
+      <!-- Drone Status and Controls -->
       <div class="d-flex align-center mr-4">
         <v-icon :color="isDroneConnected ? 'success' : 'error'" icon="mdi-quadcopter" class="mr-2" />
         <span class="text-subtitle-2 font-weight-medium" :class="isDroneConnected ? 'text-success' : 'text-error'">
           {{ isDroneConnected ? 'Drone Connected' : 'Drone Disconnected' }}
         </span>
+        <v-btn
+          v-if="!isDroneConnected"
+          class="ml-2"
+          color="success"
+          density="compact"
+          variant="tonal"
+          @click="connectVehicle('drone')"
+        >
+          Connect
+        </v-btn>
+        <v-btn
+          v-if="isDroneConnected"
+          class="ml-2"
+          color="error"
+          density="compact"
+          variant="tonal"
+          @click="disconnectVehicle('drone')"
+        >
+          Disconnect
+        </v-btn>
       </div>
 
+      <!-- Vehicle Status and Controls -->
       <div class="d-flex align-center mr-4">
         <v-icon :color="isVehicleConnected ? 'success' : 'error'" icon="mdi-car" class="mr-2" />
         <span class="text-subtitle-2 font-weight-medium" :class="isVehicleConnected ? 'text-success' : 'text-error'">
           {{ isVehicleConnected ? 'Vehicle Connected' : 'Vehicle Disconnected' }}
         </span>
+        <v-btn
+          v-if="!isVehicleConnected"
+          class="ml-2"
+          color="success"
+          density="compact"
+          variant="tonal"
+          @click="connectVehicle('car')"
+        >
+          Connect
+        </v-btn>
+        <v-btn
+          v-if="isVehicleConnected"
+          class="ml-2"
+          color="error"
+          density="compact"
+          variant="tonal"
+          @click="disconnectVehicle('car')"
+        >
+          Disconnect
+        </v-btn>
       </div>
 
       <v-tabs v-model="activeTab" align-tabs="end" color="white">
@@ -29,6 +71,7 @@
         </v-tab>
       </v-tabs>
     </v-app-bar>
+
 
     <InfoPanel
       :distance="distance"
@@ -74,21 +117,21 @@
 </template>
 
 <script setup>
-  import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from 'vue'
-  import InfoPanel from './components/InfoPanel.vue'
-  import MapContainer from './components/MapContainer.vue'
+import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import InfoPanel from './components/InfoPanel.vue'
+import MapContainer from './components/MapContainer.vue'
 
-  // Navigation state
-  const activeTab = ref(0)
-  const navItems = ref([
-    { label: 'Dashboard' },
-    { label: 'History' },
-    { label: 'Settings' },
-  ])
+// Navigation state
+const activeTab = ref(0)
+const navItems = ref([
+  { label: 'Dashboard' },
+  { label: 'History' },
+  { label: 'Settings' },
+])
 
 
-  // Reactive telemetry data object matching your API structure
-  const droneData = reactive({
+// Reactive telemetry data object matching your API structure
+const droneData = reactive({
     position: {
       latitude: null,
       longitude: null,
@@ -125,7 +168,7 @@
     vehicle_id: null,
   })
 
-  const vehicleData = reactive({
+const vehicleData = reactive({
     position: {
       latitude: null,
       longitude: null,
@@ -164,145 +207,137 @@
     vehicle_id: null,
   })
 
-  // Another app state
-  const distance = ref(0)
-  const missionActive = ref(false)
-  const showSnackbar = ref(false)
-  const snackbarMessage = ref('')
-  const snackbarColor = ref('success')
+// Another app state
+const distance = ref(0)
+const missionActive = ref(false)
+const showSnackbar = ref(false)
+const snackbarMessage = ref('')
+const snackbarColor = ref('success')
 
-  // WebSocket connections
-  const wsConnections = reactive({
-    drone: null,
-    vehicle: null,
-  })
+// WebSocket connections
+const wsConnections = reactive({
+  drone: null,
+  vehicle: null,
+})
+const wsReconnectAttempts = ref(0)
+const maxReconnectAttempts = 5
+const isDroneConnected = ref(false)
+const isVehicleConnected = ref(false)
+let connectionCheckInterval = null
 
-  const wsReconnectAttempts = ref(0)
-  const maxReconnectAttempts = 5
-  const isDroneConnected = ref(false)
-  const isVehicleConnected = ref(false)
-  let connectionCheckInterval = null
-  // Coordination state
-  const isCoordinationActive = ref(false)
-  const isDroneFollowing = ref(false)
-  const surveyButtonEnabled = ref(false)
+// Coordination state
+const isCoordinationActive = ref(false)
+const isDroneFollowing = ref(false)
+const surveyButtonEnabled = ref(false)
 
+// Vehicle info derived from telemetry data
+const vehicleSpeed = computed(() => {
+  // Ground speed from telemetry is in m/s. Default to 0 if not available.
+  return vehicleData.velocity.ground_speed.toFixed(2) ?? 0
+})
+const vehicleState = computed(() => {
+  // Use a small threshold (e.g., 0.1 m/s) to account for GPS drift or minor fluctuations.
+  return (vehicleData.velocity.ground_speed ?? 0) > 0.1 ? 'Moving' : 'Parked'
+})
+const vehicleLocation = ref('Site Ol Pejeta')
 
-  // Vehicle info derived from telemetry data
-  const vehicleSpeed = computed(() => {
-    // Ground speed from telemetry is in m/s. Default to 0 if not available.
-    return vehicleData.velocity.ground_speed.toFixed(2) ?? 0
-  })
+// Instructions and mission steps
+const instructions = ref('Vehicle position is currently safe. Maintain current position during drone operation.')
+const missionSteps = ref([
+  { text: 'Drone take-off', status: 'completed' },
+  { text: 'Field scanning', status: 'current', progress: 45 },
+  { text: 'Data collection at points A, B, C', status: 'pending' },
+  { text: 'Return to base', status: 'pending' },
+])
 
-  const vehicleState = computed(() => {
-    // Use a small threshold (e.g., 0.1 m/s) to account for GPS drift or minor fluctuations.
-    return (vehicleData.velocity.ground_speed ?? 0) > 0.1 ? 'Moving' : 'Parked'
-  })
+// Computed properties
+const status = computed(() => {
+  if (distance.value > 500) return 'DANGER'
+  if (distance.value > 490) return 'WARNING'
+  return 'SAFE'
+})
+const statusColor = computed(() => {
+  switch (status.value) {
+    case 'DANGER':
+      return { dot: 'bg-error', text: 'text-error', bg: 'bg-error-subtle' }
+    case 'WARNING':
+      return { dot: 'bg-warning', text: 'text-warning', bg: 'bg-warning-subtle' }
+    default: // SAFE
+      return { dot: 'bg-success', text: 'text-success', bg: 'bg-success-subtle' }
+  }
+})
+const instructionCard = computed(() => {
+  if (status.value !== 'DANGER') {
+    return { color: '', variant: 'flat', border: false }
+  } else {
+    return { color: 'error-subtle', variant: 'flat', border: 'start' }
+  }
+})
+// Function to calculate distance between two GPS coordinates
+const calculateDistance = (lat1, lon1, lat2, lon2) => {
+  const R = 6371000 // Earth's radius in meters
+  const toRad = value => (value * Math.PI) / 180
 
-  const vehicleLocation = ref('Site Ol Pejeta')
+  const dLat = toRad(lat2 - lat1)
+  const dLon = toRad(lon2 - lon1)
+  const lat1Rad = toRad(lat1)
+  const lat2Rad = toRad(lat2)
 
-  // Instructions and mission steps
-  const instructions = ref('Vehicle position is currently safe. Maintain current position during drone operation.')
-  const missionSteps = ref([
-    { text: 'Drone take-off', status: 'completed' },
-    { text: 'Field scanning', status: 'current', progress: 45 },
-    { text: 'Data collection at points A, B, C', status: 'pending' },
-    { text: 'Return to base', status: 'pending' },
-  ])
-
-  // Computed properties
-  const status = computed(() => {
-    if (distance.value > 500) return 'DANGER'
-    if (distance.value > 490) return 'WARNING'
-    return 'SAFE'
-  })
-
-  const statusColor = computed(() => {
-    switch (status.value) {
-      case 'DANGER':
-        return { dot: 'bg-error', text: 'text-error', bg: 'bg-error-subtle' }
-      case 'WARNING':
-        return { dot: 'bg-warning', text: 'text-warning', bg: 'bg-warning-subtle' }
-      default: // SAFE
-        return { dot: 'bg-success', text: 'text-success', bg: 'bg-success-subtle' }
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1Rad) * Math.cos(lat2Rad)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return R * c
+}
+// Watch for changes in drone or vehicle position to update distance
+watch(
+  [() => droneData.position, () => vehicleData.position],
+  ([dronePos, vehiclePos]) => {
+    if (
+      dronePos &&
+      dronePos.latitude !== null &&
+      dronePos.longitude !== null &&
+      vehiclePos &&
+      vehiclePos.latitude !== null &&
+      vehiclePos.longitude !== null
+    ) {
+      const newDistance = calculateDistance(
+        dronePos.latitude,
+        dronePos.longitude,
+        vehiclePos.latitude,
+        vehiclePos.longitude,
+      )
+      distance.value = Math.round(newDistance)
     }
-  })
+  },
+  { deep: true },
+)
 
-  const instructionCard = computed(() => {
-    if (status.value !== 'DANGER') {
-      return { color: '', variant: 'flat', border: false }
-    } else {
-      return { color: 'error-subtle', variant: 'flat', border: 'start' }
-    }
-  })
+// Function to check connection status based on last heartbeat
+const checkConnectionStatus = () => {
+  const now = Date.now()
+  const CONNECTION_TIMEOUT = 5000 // 5 seconds
 
-  // Function to calculate distance between two GPS coordinates
-  const calculateDistance = (lat1, lon1, lat2, lon2) => {
-    const R = 6371000 // Earth's radius in meters
-    const toRad = value => (value * Math.PI) / 180
-
-    const dLat = toRad(lat2 - lat1)
-    const dLon = toRad(lon2 - lon1)
-    const lat1Rad = toRad(lat1)
-    const lat2Rad = toRad(lat2)
-
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1Rad) * Math.cos(lat2Rad)
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-    return R * c
+  // Check drone
+  const droneHeartbeat = droneData.heartbeat?.timestamp
+  if (droneHeartbeat) {
+    const lastHeartbeatMs = droneHeartbeat * 1000 // Convert seconds to ms
+    isDroneConnected.value = (now - lastHeartbeatMs) < CONNECTION_TIMEOUT
+  } else {
+    isDroneConnected.value = false
   }
 
-  // Watch for changes in drone or vehicle position to update distance
-  watch(
-    [() => droneData.position, () => vehicleData.position],
-    ([dronePos, vehiclePos]) => {
-      if (
-        dronePos &&
-        dronePos.latitude !== null &&
-        dronePos.longitude !== null &&
-        vehiclePos &&
-        vehiclePos.latitude !== null &&
-        vehiclePos.longitude !== null
-      ) {
-        const newDistance = calculateDistance(
-          dronePos.latitude,
-          dronePos.longitude,
-          vehiclePos.latitude,
-          vehiclePos.longitude,
-        )
-        distance.value = Math.round(newDistance)
-      }
-    },
-    { deep: true },
-  )
-
-  // Function to check connection status based on last heartbeat
-  const checkConnectionStatus = () => {
-    const now = Date.now()
-    const CONNECTION_TIMEOUT = 5000 // 5 seconds
-
-    // Check drone
-    const droneHeartbeat = droneData.heartbeat?.timestamp
-    if (droneHeartbeat) {
-      const lastHeartbeatMs = droneHeartbeat * 1000 // Convert seconds to ms
-      isDroneConnected.value = (now - lastHeartbeatMs) < CONNECTION_TIMEOUT
-    } else {
-      isDroneConnected.value = false
-    }
-
-    // Check vehicle
-    const vehicleHeartbeat = vehicleData.heartbeat?.timestamp
-    if (vehicleHeartbeat) {
-      const lastHeartbeatMs = vehicleHeartbeat * 1000
-      isVehicleConnected.value = (now - lastHeartbeatMs) < CONNECTION_TIMEOUT
-    } else {
-      isVehicleConnected.value = false
-    }
+  // Check vehicle
+  const vehicleHeartbeat = vehicleData.heartbeat?.timestamp
+  if (vehicleHeartbeat) {
+    const lastHeartbeatMs = vehicleHeartbeat * 1000
+    isVehicleConnected.value = (now - lastHeartbeatMs) < CONNECTION_TIMEOUT
+  } else {
+    isVehicleConnected.value = false
   }
-
-  // WebSocket connection function
-  const connectWebSocket = vehicleType => {
+}
+// WebSocket connection function
+const connectWebSocket = vehicleType => {
     if (wsConnections[vehicleType] && wsConnections[vehicleType].readyState === WebSocket.OPEN) {
       console.log(`WebSocket for ${vehicleType} already connected`)
       return
@@ -458,141 +493,211 @@
       showSnackbar.value = true
     }
   }
-
-  const disconnectWebSocket = vehicleType => {
-    if (
-      wsConnections[vehicleType] &&
-      [WebSocket.OPEN, WebSocket.CONNECTING].includes(wsConnections[vehicleType].readyState)
-    ) {
-      console.log(`Closing WebSocket connection for ${vehicleType}`)
-      wsConnections[vehicleType].close(1000, `Disconnecting ${vehicleType} by user action`)
-    }
+const disconnectWebSocket = vehicleType => {
+  if (
+    wsConnections[vehicleType] &&
+    [WebSocket.OPEN, WebSocket.CONNECTING].includes(wsConnections[vehicleType].readyState)
+  ) {
+    console.log(`Closing WebSocket connection for ${vehicleType}`)
+    wsConnections[vehicleType].close(1000, `Disconnecting ${vehicleType} by user action`)
   }
+}
+  // const startMission = async vehicleType => {
+  //   console.log('Connecting to '+vehicleType)
+  //   try {
+  //     const response = await fetch(`http://localhost:8000/vehicles/${vehicleType}/connect`, {
+  //       method: 'POST',
+  //       headers: {
+  //         'Accept': 'application/json',
+  //         'Content-Type': 'application/json',
+  //       },
+  //     })
+  //
+  //     const data = await response.json()
+  //
+  //     if (!response.ok) {
+  //       throw new Error(data.detail || `Failed to connect to ${vehicleType}`)
+  //     }
+  //
+  //     // Update initial telemetry data from the connected response for the specific vehicle
+  //     if (vehicleType === 'drone') {
+  //       if (data.position) Object.assign(droneData.position, data.position)
+  //       if (data.velocity) Object.assign(droneData.velocity, data.velocity)
+  //       if (data.battery) Object.assign(droneData.battery, data.battery)
+  //       if (data.mission) Object.assign(droneData.mission, data.mission)
+  //       if (data.heartbeat) Object.assign(droneData.heartbeat, data.heartbeat)
+  //     } else if (vehicleType === 'car') {
+  //       if (data.position) Object.assign(vehicleData.position, data.position)
+  //       if (data.velocity) Object.assign(vehicleData.velocity, data.velocity)
+  //       if (data.battery) Object.assign(vehicleData.battery, data.battery)
+  //       if (data.mission) Object.assign(vehicleData.mission, data.mission)
+  //       if (data.heartbeat) Object.assign(vehicleData.heartbeat, data.heartbeat)
+  //     }
+  //
+  //     snackbarMessage.value = `${vehicleType.charAt(0).toUpperCase() + vehicleType.slice(1)} connected successfully`
+  //     snackbarColor.value = 'success'
+  //     showSnackbar.value = true
+  //
+  //     // Connect to the WebSocket for telemetry
+  //     connectWebSocket(vehicleType)
+  //
+  //   } catch (error) {
+  //     console.error(`Error connecting to ${vehicleType}:`, error)
+  //     if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+  //       snackbarMessage.value = 'Connection Refused: Check if the server is running.'
+  //     } else {
+  //       snackbarMessage.value = `Error connecting to ${vehicleType}: ${error.message}`
+  //     }
+  //     snackbarColor.value = 'error'
+  //     showSnackbar.value = true
+  //   }
+  // }
+  // const emergencyStop = async () => {
+  //   try {
+  //     const response = await fetch('http://localhost:8000/vehicles/drone/disconnect', {
+  //       method: 'POST',
+  //       headers: {
+  //         'Accept': 'application/json',
+  //         'Content-Type': 'application/json',
+  //       },
+  //     })
+  //
+  //     const data = await response.json()
+  //
+  //     if (!response.ok) {
+  //       throw new Error(data.detail || 'Failed to disconnect drone')
+  //     }
+  //
+  //     missionActive.value = false
+  //     snackbarMessage.value = 'Disconnected successfully'
+  //     snackbarColor.value = 'info'
+  //     showSnackbar.value = true
+  //
+  //     disconnectWebSocket()
+  //
+  //   } catch (error) {
+  //     console.error('Error executing emergency stop:', error)
+  //     snackbarMessage.value = `Error executing emergency stop: ${error.message}`
+  //     snackbarColor.value = 'error'
+  //     showSnackbar.value = true
+  //     missionActive.value = false
+  //     disconnectWebSocket()
+  //   }
+  // }
+const connectVehicle = async vehicleType => {
+  console.log(`Connecting to ${vehicleType}...`)
+  try {
+    const response = await fetch(`http://localhost:8000/vehicles/${vehicleType}/connect`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+    })
 
+    const data = await response.json()
 
-  const startMission = async vehicleType => {
-    console.log('Connecting to '+vehicleType)
-    try {
-      const response = await fetch(`http://localhost:8000/vehicles/${vehicleType}/connect`, {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.detail || `Failed to connect to ${vehicleType}`)
-      }
-
-      // Update initial telemetry data from the connected response for the specific vehicle
-      if (vehicleType === 'drone') {
-        if (data.position) Object.assign(droneData.position, data.position)
-        if (data.velocity) Object.assign(droneData.velocity, data.velocity)
-        if (data.battery) Object.assign(droneData.battery, data.battery)
-        if (data.mission) Object.assign(droneData.mission, data.mission)
-        if (data.heartbeat) Object.assign(droneData.heartbeat, data.heartbeat)
-      } else if (vehicleType === 'car') {
-        if (data.position) Object.assign(vehicleData.position, data.position)
-        if (data.velocity) Object.assign(vehicleData.velocity, data.velocity)
-        if (data.battery) Object.assign(vehicleData.battery, data.battery)
-        if (data.mission) Object.assign(vehicleData.mission, data.mission)
-        if (data.heartbeat) Object.assign(vehicleData.heartbeat, data.heartbeat)
-      }
-
-      snackbarMessage.value = `${vehicleType.charAt(0).toUpperCase() + vehicleType.slice(1)} connected successfully`
-      snackbarColor.value = 'success'
-      showSnackbar.value = true
-
-      // Connect to the WebSocket for telemetry
-      connectWebSocket(vehicleType)
-
-    } catch (error) {
-      console.error(`Error connecting to ${vehicleType}:`, error)
-      if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-        snackbarMessage.value = 'Connection Refused: Check if the server is running.'
-      } else {
-        snackbarMessage.value = `Error connecting to ${vehicleType}: ${error.message}`
-      }
-      snackbarColor.value = 'error'
-      showSnackbar.value = true
+    if (!response.ok) {
+      throw new Error(data.detail || `Failed to connect to ${vehicleType}`)
     }
+
+    snackbarMessage.value = `${vehicleType.charAt(0).toUpperCase() + vehicleType.slice(1)} connected successfully`
+    snackbarColor.value = 'success'
+    showSnackbar.value = true
+
+    // Connect to the WebSocket for telemetry
+    connectWebSocket(vehicleType)
+
+  } catch (error) {
+    console.error(`Error connecting to ${vehicleType}:`, error)
+    if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+      snackbarMessage.value = 'Connection Refused: Check if the server is running.'
+    } else {
+      snackbarMessage.value = `Error connecting to ${vehicleType}: ${error.message}`
+    }
+    snackbarColor.value = 'error'
+    showSnackbar.value = true
   }
+}
 
-  const emergencyStop = async () => {
-    try {
-      const response = await fetch('http://localhost:8000/vehicles/drone/disconnect', {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-      })
+const disconnectVehicle = async vehicleType => {
+  console.log(`Disconnecting ${vehicleType}...`)
+  try {
+    const response = await fetch(`http://localhost:8000/vehicles/${vehicleType}/disconnect`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+    })
 
-      const data = await response.json()
+    const data = await response.json()
 
-      if (!response.ok) {
-        throw new Error(data.detail || 'Failed to disconnect drone')
-      }
-
-      missionActive.value = false
-      snackbarMessage.value = 'Disconnected successfully'
-      snackbarColor.value = 'info'
-      showSnackbar.value = true
-
-      disconnectWebSocket()
-
-    } catch (error) {
-      console.error('Error executing emergency stop:', error)
-      snackbarMessage.value = `Error executing emergency stop: ${error.message}`
-      snackbarColor.value = 'error'
-      showSnackbar.value = true
-      missionActive.value = false
-      disconnectWebSocket()
+    if (!response.ok) {
+      throw new Error(data.detail || `Failed to disconnect ${vehicleType}`)
     }
+
+    snackbarMessage.value = `${vehicleType.charAt(0).toUpperCase() + vehicleType.slice(1)} disconnected successfully`
+    snackbarColor.value = 'info'
+    showSnackbar.value = true
+
+    disconnectWebSocket(vehicleType)
+
+  } catch (error) {
+    console.error(`Error disconnecting ${vehicleType}:`, error)
+    snackbarMessage.value = `Error disconnecting ${vehicleType}: ${error.message}`
+    snackbarColor.value = 'error'
+    showSnackbar.value = true
+    // Still attempt to close the websocket on error
+    disconnectWebSocket(vehicleType)
   }
+}
+const initiateSurvey = async () => {
+  try {
+    const response = await fetch('http://localhost:8000/coordination/initiate-proximity-survey', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+    })
 
-  const initiateSurvey = async () => {
-    try {
-      const response = await fetch('http://localhost:8000/coordination/initiate-proximity-survey', {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-      })
+    const data = await response.json()
 
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Failed to initiate survey')
-      }
-
-      snackbarMessage.value = 'Proximity survey initiated successfully'
-      snackbarColor.value = 'success'
-      showSnackbar.value = true
-
-    } catch (error) {
-      console.error('Error initiating survey:', error)
-      snackbarMessage.value = `Error initiating survey: ${error.message}`
-      snackbarColor.value = 'error'
-      showSnackbar.value = true
+    if (!response.ok) {
+      throw new Error(data.message || 'Failed to initiate survey')
     }
+
+    snackbarMessage.value = 'Proximity survey initiated successfully'
+    snackbarColor.value = 'success'
+    showSnackbar.value = true
+
+  } catch (error) {
+    console.error('Error initiating survey:', error)
+    snackbarMessage.value = `Error initiating survey: ${error.message}`
+    snackbarColor.value = 'error'
+    showSnackbar.value = true
   }
+}
 
-  onBeforeUnmount(() => {
-    if (connectionCheckInterval) {
-      clearInterval(connectionCheckInterval)
-    }
-    disconnectWebSocket('drone')
-    disconnectWebSocket('car')
-  })
+onBeforeUnmount(() => {
+  if (connectionCheckInterval) {
+    clearInterval(connectionCheckInterval)
+  }
+  disconnectWebSocket('drone')
+  disconnectWebSocket('car')
+})
+onMounted(() => {
+  // Start checking connection status periodically
+  connectionCheckInterval = setInterval(checkConnectionStatus, 1000)
 
-  onMounted(() => {
-    connectionCheckInterval = setInterval(checkConnectionStatus, 1000) // Check every second
-  })
+  // --- START OF CHANGE ---
+  // Automatically connect to WebSockets on application startup
+  console.log('Application mounted. Automatically connecting WebSockets...')
+  connectWebSocket('drone')
+  connectWebSocket('car')
+  // --- END OF CHANGE ---
+})
 </script>
 
 <style scoped>

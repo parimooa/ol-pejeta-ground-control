@@ -3,11 +3,6 @@
     <div ref="mapElement" class="map" />
 
     <div class="map-controls">
-      <div class="coordinates pa-2">
-        Lat: {{ formatCoordinate(currentPosition.lat, 'lat') }},
-        Long: {{ formatCoordinate(currentPosition.lng, 'lng') }}
-      </div>
-
       <!-- Map Type Toggle -->
       <div class="map-type-toggle pa-2">
         <div class="toggle-wrapper">
@@ -82,155 +77,110 @@
         </div>
       </div>
 
-      <div class="control-buttons">
-        <div class="button-container">
-          <v-btn
-            class="mx-2"
-            color="primary"
-            prepend-icon="mdi-play"
-            rounded="xl"
-            variant="elevated"
-            @click="handleStartMission('drone')"
-          >
-            Connect Drone
-          </v-btn>
-          <v-btn
-            class="mx-2"
-            color="error"
-            prepend-icon="mdi-close"
-            rounded="xl"
-            variant="elevated"
-            @click="handleEmergencyStop"
-          >
-           Disconnect Drone
-          </v-btn>
-          <v-btn
-            class="mx-2"
-            color="purple"
-            prepend-icon="mdi-play"
-            rounded="xl"
-            variant="elevated"
-            @click="handleStartMission('car')"
-          >
-            Connect Vehicle
-          </v-btn>
-        </div>
-      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-  import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-  import Map from 'ol/Map'
-  import View from 'ol/View'
-  import TileLayer from 'ol/layer/Tile'
-  import OSM from 'ol/source/OSM'
-  import XYZ from 'ol/source/XYZ'
-  import { fromLonLat, toLonLat } from 'ol/proj'
-  import Feature from 'ol/Feature'
-  import Point from 'ol/geom/Point'
-  import LineString from 'ol/geom/LineString'
-  import Circle from 'ol/geom/Circle'
-  import { Vector as VectorLayer } from 'ol/layer'
-  import { Vector as VectorSource } from 'ol/source'
-  import { Circle as CircleStyle, Fill, Icon, Stroke, Style,Text } from 'ol/style'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import Map from 'ol/Map'
+import View from 'ol/View'
+import TileLayer from 'ol/layer/Tile'
+import OSM from 'ol/source/OSM'
+import XYZ from 'ol/source/XYZ'
+import { fromLonLat, toLonLat } from 'ol/proj'
+import Feature from 'ol/Feature'
+import Point from 'ol/geom/Point'
+import LineString from 'ol/geom/LineString'
+import Circle from 'ol/geom/Circle'
+import { Vector as VectorLayer } from 'ol/layer'
+import { Vector as VectorSource } from 'ol/source'
+import { Circle as CircleStyle, Fill, Icon, Stroke, Style, Text } from 'ol/style'
 
-  import droneIcon from '@/assets/drone.png'
-  import vehicleIcon from '@/assets/car_top_view.png'
+import droneIcon from '@/assets/drone.png'
+import vehicleIcon from '@/assets/car_top_view.png'
 
-  const props = defineProps({
-    distance: {
-      type: Number,
-      required: true,
-    },
-    droneTelemetryData: {
-      type: Object,
-      default: null,
-    },
-    vehicleTelemetryData: {
-      type: Object,
-      default: null,
-    },
-    isDroneConnected: {
-      type: Boolean,
-      default: false,
-    },
-    isVehicleConnected: {
-      type: Boolean,
-      default: false,
-    },
-    isCoordinationActive: {
-      type: Boolean,
-      default: false,
-    },
-    isDroneFollowing: {
-      type: Boolean,
-      default: false,
-    }
-  })
-
-  const emit = defineEmits([
-    'update:current-position',
-    'update:drone-position',
-    'update:vehicle-position',
-    'start-mission',
-    'emergency-stop',
-  ])
-
-  const mapElement = ref(null)
-  let map = null
-
-  // Map layers
-  let osmLayer = null
-  let satelliteLayer = null
-  let hybridLabelsLayer = null
-
-  let droneFeature = null
-  let vehicleFeature = null
-  let safetyRadiusFeature = null
-  let distanceLineFeature = null
-  let distanceLabelFeature = null
-  let vectorSource = null
-  let vectorLayer = null
-  let waypointFeatures = {}
-
-  const currentPosition = ref({ lat: 0.0078, lng: 36.9759 })
-  const dronePosition = ref({ x: 0, y: 0 })
-  const vehiclePosition = ref({ x: 0, y: 0 })
-  const searchQuery = ref('')
-  const manualControl = ref(true) // Toggle between manual and telemetry control
-  const mapType = ref('osm') // 'osm', 'satellite', or 'hybrid'
-  const followVehicle = ref(true) // Whether to follow the vehicle
-  const followDrone = ref(false) // Whether to follow the drone
-
-  // Helper computed property to check if position data is available
-  const dronePositionAvailable = computed(() => {
-    return props.isDroneConnected &&
-      props.droneTelemetryData &&
-      props.droneTelemetryData.position &&
-      props.droneTelemetryData.position.latitude !== null &&
-      props.droneTelemetryData.position.longitude !== null
-  })
-
-  const vehiclePositionAvailable = computed(() => {
-    return props.isVehicleConnected &&
-      props.vehicleTelemetryData &&
-      props.vehicleTelemetryData.position &&
-      props.vehicleTelemetryData.position.latitude !== null &&
-      props.vehicleTelemetryData.position.longitude !== null
-  })
-
-  // Add button handlers
-  const handleStartMission = vehicleType => {
-    console.log('MapContainer: Start Mission button clicked')
-    emit('start-mission', vehicleType)
+const props = defineProps({
+  distance: {
+    type: Number,
+    required: true,
+  },
+  droneTelemetryData: {
+    type: Object,
+    default: null,
+  },
+  vehicleTelemetryData: {
+    type: Object,
+    default: null,
+  },
+  isDroneConnected: {
+    type: Boolean,
+    default: false,
+  },
+  isVehicleConnected: {
+    type: Boolean,
+    default: false,
+  },
+  isCoordinationActive: {
+    type: Boolean,
+    default: false,
+  },
+  isDroneFollowing: {
+    type: Boolean,
+    default: false,
   }
+})
 
-  const handleEmergencyStop = () => {
-    console.log('MapContainer: Emergency Stop button clicked')
-    emit('emergency-stop')
-  }
+const emit = defineEmits([
+  'update:current-position',
+  'update:drone-position',
+  'update:vehicle-position',
+])
+
+const mapElement = ref(null)
+let map = null
+
+// Map layers
+let osmLayer = null
+let satelliteLayer = null
+let hybridLabelsLayer = null
+
+let droneFeature = null
+let vehicleFeature = null
+let safetyRadiusFeature = null
+let distanceLineFeature = null
+let distanceLabelFeature = null
+let vectorSource = null
+let vectorLayer = null
+let waypointFeatures = {}
+
+const currentPosition = ref({ lat: 0.0078, lng: 36.9759 })
+const dronePosition = ref({ x: 0, y: 0 })
+const vehiclePosition = ref({ x: 0, y: 0 })
+const coordinationLoading = ref(false)
+
+const manualControl = ref(true) // Toggle between manual and telemetry control
+const mapType = ref('osm') // 'osm', 'satellite', or 'hybrid'
+const followVehicle = ref(true) // Whether to follow the vehicle
+const followDrone = ref(false) // Whether to follow the drone
+
+// Helper computed property to check if position data is available
+const dronePositionAvailable = computed(() => {
+  return props.isDroneConnected &&
+    props.droneTelemetryData &&
+    props.droneTelemetryData.position &&
+    props.droneTelemetryData.position.latitude !== null &&
+    props.droneTelemetryData.position.longitude !== null
+})
+
+const vehiclePositionAvailable = computed(() => {
+  return props.isVehicleConnected &&
+    props.vehicleTelemetryData &&
+    props.vehicleTelemetryData.position &&
+    props.vehicleTelemetryData.position.latitude !== null &&
+    props.vehicleTelemetryData.position.longitude !== null
+})
+
 
   const startCoordination = async () => {
     try {

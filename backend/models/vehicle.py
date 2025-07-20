@@ -43,6 +43,8 @@ class Vehicle:
         self.last_waypoint_reach_time = None
         self.waypoint_visit_threshold = 3.0  # meters
         self.waypoint_confirmation_delay = 2.0  # seconds
+        self._survey_mission_complete = False
+        self.last_waypoint_seq = -1
 
         # State management for telemetry
         self._lock = threading.Lock()
@@ -532,6 +534,19 @@ class Vehicle:
             print(f"Error clearing mission: {e}")
             return False
 
+    def _get_command_name(self, command_id: int) -> str:
+        """Get human-readable name for MAVLink command."""
+        command_names = {
+            mavutil.mavlink.MAV_CMD_NAV_WAYPOINT: "WAYPOINT",
+            mavutil.mavlink.MAV_CMD_NAV_LOITER_UNLIM: "LOITER_UNLIM",
+            mavutil.mavlink.MAV_CMD_NAV_LOITER_TIME: "LOITER_TIME",
+            mavutil.mavlink.MAV_CMD_NAV_LOITER_TURNS: "LOITER_TURNS",
+            mavutil.mavlink.MAV_CMD_NAV_RETURN_TO_LAUNCH: "RTL",
+            mavutil.mavlink.MAV_CMD_NAV_LAND: "LAND",
+            mavutil.mavlink.MAV_CMD_NAV_TAKEOFF: "TAKEOFF",
+        }
+        return command_names.get(command_id, f"CMD_{command_id}")
+
     def upload_mission(self, waypoints) -> bool:
         """Upload a mission to the drone."""
         if not self.vehicle:
@@ -542,56 +557,90 @@ class Vehicle:
             print("No waypoints provided for mission upload.")
             return False
 
-        print(f"Uploading mission with {len(waypoints)} waypoints...")
+        # Log mission details including command types for better debugging
+        command_counts = {}
+        for wp in waypoints:
+            cmd_name = self._get_command_name(wp.command)
+            command_counts[cmd_name] = command_counts.get(cmd_name, 0) + 1
+
+        command_summary = ", ".join(
+            [f"{count} {cmd}" for cmd, count in command_counts.items()]
+        )
+        print(f"Uploading mission with {len(waypoints)} waypoints: {command_summary}")
 
         try:
-            # First clear any existing mission
+            # First, clear any existing mission from the vehicle
             if not self.clear_mission():
-                print("Failed to clear existing mission")
+                print("❌ Failed to clear existing mission before upload.")
                 return False
 
-            # Send mission count
+            # --- START OF FIX ---
+            # Reset the survey completion flag for the new mission.
+            # This ensures we don't carry over a "complete" state from a previous run.
+            with self._lock:
+                self._survey_mission_complete = False
+                self.last_waypoint_seq = -1
+
+            # Find the sequence number of the last actual survey waypoint.
+            # We iterate in reverse to find the first waypoint that is NOT a final command.
+            # This will be our trigger for marking the survey as complete.
+            for wp in reversed(waypoints):
+                if wp.command not in [
+                    mavutil.mavlink.MAV_CMD_NAV_RETURN_TO_LAUNCH,
+                    mavutil.mavlink.MAV_CMD_NAV_LAND,
+                ]:
+                    self.last_waypoint_seq = wp.seq
+                    break
+
+            print(
+                f"ℹ️ Mission completion will be triggered after reaching waypoint sequence: {self.last_waypoint_seq}"
+            )
+            # --- END OF FIX ---
+
+            # Send the total number of waypoints to the vehicle
             self.vehicle.mav.mission_count_send(
                 self.vehicle.target_system,
                 self.vehicle.target_component,
                 len(waypoints),
             )
 
-            # Wait for mission request
+            # Upload each waypoint one by one, waiting for the vehicle to request it
             for i, waypoint in enumerate(waypoints):
-                print(f"Uploading waypoint {i+1}/{len(waypoints)}")
-
-                # Wait for waypoint request
+                # Wait for the vehicle to request the next waypoint (MISSION_REQUEST)
                 start_time = time.time()
-                while time.time() - start_time < 10:
+                while time.time() - start_time < 10:  # 10-second timeout per waypoint
                     msg = self.vehicle.recv_match(
                         type="MISSION_REQUEST", blocking=False, timeout=1
                     )
                     if msg and msg.seq == i:
-                        break
+                        break  # Vehicle is ready for this waypoint
                 else:
-                    print(f"Timeout waiting for waypoint {i} request")
+                    print(f"❌ Timeout waiting for vehicle to request waypoint {i}")
                     return False
 
-                # Send waypoint
+                # Send the waypoint details
+                cmd_name = self._get_command_name(waypoint.command)
+                print(
+                    f"  -> Uploading waypoint {i + 1}/{len(waypoints)}: {cmd_name} (seq: {waypoint.seq})"
+                )
                 self.vehicle.mav.mission_item_int_send(
                     self.vehicle.target_system,
                     self.vehicle.target_component,
-                    waypoint.seq,  # seq
-                    mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,  # frame
-                    waypoint.command,  # command
-                    0,  # current - 0 for all waypoints except first
+                    waypoint.seq,
+                    mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
+                    waypoint.command,
+                    0,  # current (0 for non-active waypoints)
                     1,  # autocontinue
-                    waypoint.param1,  # param1
-                    waypoint.param2,  # param2
-                    waypoint.param3,  # param3
-                    waypoint.param4,  # param4
-                    int(waypoint.lat * 1e7),  # x (latitude)
-                    int(waypoint.lon * 1e7),  # y (longitude)
-                    waypoint.alt,  # z (altitude)
+                    waypoint.param1,
+                    waypoint.param2,
+                    waypoint.param3,
+                    waypoint.param4,
+                    int(waypoint.lat * 1e7),
+                    int(waypoint.lon * 1e7),
+                    waypoint.alt,
                 )
 
-            # Wait for mission ACK
+            # Finally, wait for the mission acknowledgment (MISSION_ACK)
             start_time = time.time()
             while time.time() - start_time < 10:
                 msg = self.vehicle.recv_match(
@@ -600,109 +649,39 @@ class Vehicle:
                 if msg:
                     if msg.type == mavutil.mavlink.MAV_MISSION_ACCEPTED:
                         print("✅ Mission uploaded successfully")
-                        # Update local mission data
-                        self.mission_total_waypoints = len(waypoints)
-                        self.fetch_mission_waypoints()  # Refresh local waypoint data
+                        # Refresh the local copy of the mission from the vehicle
+                        self.fetch_mission_waypoints()
                         return True
                     else:
-                        print(f"❌ Mission upload failed with error: {msg.type}")
+                        print(f"❌ Mission upload failed with error code: {msg.type}")
                         return False
 
             print("⚠️ Mission upload acknowledgment timeout")
             return False
 
         except Exception as e:
-            print(f"Error uploading mission: {e}")
-            return False
-
-    def start_mission(self) -> bool:
-        """Start the current mission on the drone."""
-        if not self.vehicle:
-            print("Vehicle not connected. Cannot start mission.")
-            return False
-
-        print("Starting mission...")
-        try:
-            # Send mission start command
-            self.vehicle.mav.command_long_send(
-                self.vehicle.target_system,
-                self.vehicle.target_component,
-                mavutil.mavlink.MAV_CMD_MISSION_START,
-                0,  # confirmation
-                0,  # param1 - first item
-                0,  # param2 - last item
-                0,
-                0,
-                0,
-                0,
-                0,  # params 3-7
-            )
-
-            # Wait for command acknowledgment
-            start_time = time.time()
-            while time.time() - start_time < 5:
-                msg = self.vehicle.recv_match(
-                    type="COMMAND_ACK", blocking=False, timeout=1
-                )
-                if msg and msg.command == mavutil.mavlink.MAV_CMD_MISSION_START:
-                    if msg.result == mavutil.mavlink.MAV_RESULT_ACCEPTED:
-                        print("✅ Mission started successfully")
-                        return True
-                    else:
-                        print(f"❌ Mission start failed with result: {msg.result}")
-                        return False
-
-            print("⚠️ Mission start acknowledgment timeout")
-            return False
-
-        except Exception as e:
-            print(f"Error starting mission: {e}")
+            print(f"An exception occurred during mission upload: {e}")
             return False
 
     def is_mission_complete(self) -> bool:
-        """Check if the current mission is complete."""
-        if not self.vehicle:
-            return False
-
-        try:
-            # Get current telemetry
-            telemetry = self.get_current_telemetry()
-            if not telemetry:
-                return False
-
-            # Method 1: Check mission progress percentage
-            mission_progress = telemetry.get("mission_progress_percentage", 0)
-            if mission_progress >= 100:
-                print(f"Mission complete via progress: {mission_progress}%")
-                return True
-
-            # Method 2: Check if we've reached the last waypoint
-            current_wp = telemetry.get("current_mission_wp_seq")
-            total_wps = telemetry.get("mission_total_waypoints", 0)
-
-            if current_wp is not None and total_wps > 0:
-                # If current waypoint is the last waypoint (or beyond), mission is complete
-                if current_wp >= (total_wps - 1):
-                    print(f"Mission complete via waypoint: {current_wp}/{total_wps}")
-                    return True
-
-            # Method 3: Check mission item reached messages
-            msg = self.vehicle.recv_match(type="MISSION_ITEM_REACHED", blocking=False)
-            if msg and total_wps > 0:
-                # If we've reached the last waypoint, mission is complete
-                if msg.seq >= (total_wps - 1):
-                    print(f"Mission complete via MISSION_ITEM_REACHED: {msg.seq}/{total_wps}")
-                    return True
-
-            return False
-
-        except Exception as e:
-            print(f"Error checking mission completion: {e}")
-            return False
+        """
+        Check if the survey portion of the mission is complete.
+        This is based on a reliable flag set by the 'MISSION_ITEM_REACHED' message listener.
+        """
+        with self._lock:
+            return self._survey_mission_complete
 
     def _update_telemetry_state(self, msg, msg_type):
         """Updates the last_telemetry dictionary based on an incoming MAVLink message."""
-        if msg_type == "GLOBAL_POSITION_INT":
+        if msg_type == "MISSION_ITEM_REACHED":
+            print(f"MISSION_ITEM_REACHED: Waypoint sequence {msg.seq} reached.")
+            # Check if the reached waypoint is the last one of the survey pattern
+            if self.last_waypoint_seq != -1 and msg.seq >= self.last_waypoint_seq:
+                print(
+                    f"Survey portion of the mission is complete. Reached final survey waypoint {msg.seq}."
+                )
+                self._survey_mission_complete = True
+        elif msg_type == "GLOBAL_POSITION_INT":
             self.last_telemetry["latitude"] = msg.lat / 1e7
             self.last_telemetry["longitude"] = msg.lon / 1e7
             self.last_telemetry["altitude_msl"] = msg.alt / 1000.0

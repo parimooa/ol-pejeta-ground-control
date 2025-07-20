@@ -53,24 +53,11 @@ class CoordinationService:
         if not drone or not drone.vehicle:
             return False
 
-        # Primary requirement: Survey must be initiated by user from frontend
+        # Primary requirement: Survey must be initiated by  user from frontend
         if not self._survey_initiated_by_us:
             return False
 
-        # Get current drone telemetry
-        telemetry = drone.get_current_telemetry()
-        if not telemetry:
-            return False
-
-        # Secondary requirement: Drone must be in AUTO mode when surveying
-        current_mode = telemetry.get("custom_mode")
-        if current_mode != FlightMode.AUTO.value:
-            print(f"DEBUG: Survey initiated by us but drone not in AUTO mode (mode: {current_mode})")
-            return False
-
-        # Both conditions met: user initiated survey AND drone is in AUTO mode
-        print(f"DEBUG: Active survey detected - initiated by us: {self._survey_initiated_by_us}, AUTO mode: True")
-        return True
+        return not drone.is_mission_complete()  # Mission is complete
 
     def _check_proximity_and_update_ui(self, distance: float):
         """Check proximity and update survey button state."""
@@ -128,17 +115,19 @@ class CoordinationService:
 
             # Check if drone is currently surveying
             is_surveying = self._is_drone_surveying(drone)
-            
+
             # Check for survey completion (transition from surveying to not surveying)
             if self._last_survey_mode_state and not is_surveying:
                 print("🎉 Survey completed - drone switched back to GUIDED mode")
                 # Clear the survey flag when survey completes
-                self._survey_initiated_by_us = False
-                telemetry_manager.broadcast_event({
-                    "event": "survey_completed",
-                    "message": "Survey mission completed successfully"
-                })
-            
+                # self._survey_initiated_by_us = False
+                telemetry_manager.broadcast_event(
+                    {
+                        "event": "survey_completed",
+                        "message": "Survey mission completed successfully",
+                    }
+                )
+
             self._survey_mode_detected = is_surveying
             self._last_survey_mode_state = is_surveying
 
@@ -188,7 +177,9 @@ class CoordinationService:
                     )
                     # Abandon survey and switch to follow
                     survey_service.scan_abandoned = True
-                    self._survey_initiated_by_us = False  # Clear survey flag when abandoning
+                    self._survey_initiated_by_us = (
+                        False  # Clear survey flag when abandoning
+                    )
 
                     if self._initiate_follow_sequence(drone):
                         self._is_following = True

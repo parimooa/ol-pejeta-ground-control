@@ -2,6 +2,7 @@ import asyncio
 import time
 import math
 from typing import Dict, List, Optional, Tuple
+from pymavlink import mavutil
 from ..models.waypoint import Waypoint
 from .vehicle_service import vehicle_service
 
@@ -133,16 +134,10 @@ class SurveyService:
         num_scan_points = len(scan_waypoints)
         print(f"✅ Generated {num_scan_points} waypoints for the scan.")
 
-        # Add a loiter waypoint at the end of the scan
-        loiter_waypoint = {
-            "lat": center_waypoint["lat"],
-            "lon": center_waypoint["lon"],
-            "alt": center_waypoint["alt"],
-        }
-        scan_waypoints.append(loiter_waypoint)
-
         # Convert to Waypoint objects for upload
         waypoint_objects = []
+
+        # Add regular waypoints for the scan pattern
         for i, wp in enumerate(scan_waypoints):
             waypoint_objects.append(
                 Waypoint(
@@ -150,13 +145,29 @@ class SurveyService:
                     lat=wp["lat"],
                     lon=wp["lon"],
                     alt=wp["alt"],
-                    command=16,  # MAV_CMD_NAV_WAYPOINT
+                    command=mavutil.mavlink.MAV_CMD_NAV_WAYPOINT,
                     param1=0,
                     param2=0,
                     param3=0,
                     param4=0,
                 )
             )
+
+        # Add unlimited loiter waypoint at the end of the scan
+        loiter_radius = 15.0  # 15 meter loiter radius
+        waypoint_objects.append(
+            Waypoint(
+                seq=len(scan_waypoints),
+                lat=center_waypoint["lat"],
+                lon=center_waypoint["lon"],
+                alt=center_waypoint["alt"],
+                command=mavutil.mavlink.MAV_CMD_NAV_LOITER_UNLIM,
+                param1=0,  # Time = 0 for unlimited loiter
+                param2=loiter_radius,  # Loiter radius in meters (positive = clockwise)
+                param3=0,  # Reserved
+                param4=0,  # Exit xtrack location
+            )
+        )
 
         # Upload mission to drone
         print("\n--- Uploading Lawnmower Mission to Drone ---")
@@ -285,7 +296,14 @@ class SurveyService:
 
         if not drone_vehicle or not car_vehicle:
             return False
+        return_home_position = drone_vehicle.position()
+        if not return_home_position or not return_home_position.get("latitude"):
+            print("❌ Could not get drone's current position to set as return point.")
+            return False
 
+        print(
+            f"🚁 Setting return point to current drone position: {return_home_position['latitude']:.6f}, {return_home_position['longitude']:.6f}"
+        )
         print(
             f"\n--- Generating Proximity Survey Pattern (max {max_distance_from_center}m from center) ---"
         )
@@ -298,16 +316,10 @@ class SurveyService:
         num_scan_points = len(scan_waypoints)
         print(f"✅ Generated {num_scan_points} waypoints for proximity survey.")
 
-        # Add loiter waypoint at the end
-        loiter_waypoint = {
-            "lat": center_waypoint["lat"],
-            "lon": center_waypoint["lon"],
-            "alt": center_waypoint["alt"],
-        }
-        scan_waypoints.append(loiter_waypoint)
-
         # Convert to Waypoint objects for upload
         waypoint_objects = []
+
+        # Add regular waypoints for the proximity survey pattern
         for i, wp in enumerate(scan_waypoints):
             waypoint_objects.append(
                 Waypoint(
@@ -315,13 +327,31 @@ class SurveyService:
                     lat=wp["lat"],
                     lon=wp["lon"],
                     alt=wp["alt"],
-                    command=16,  # MAV_CMD_NAV_WAYPOINT
+                    command=mavutil.mavlink.MAV_CMD_NAV_WAYPOINT,
                     param1=0,
                     param2=0,
                     param3=0,
                     param4=0,
                 )
             )
+
+        # Add unlimited loiter waypoint at the end of the proximity survey
+        loiter_radius = 20.0  # 20 meter loiter radius for proximity survey
+        waypoint_objects.append(
+            Waypoint(
+                seq=len(scan_waypoints),
+                lat=return_home_position["latitude"],
+                lon=return_home_position["longitude"],
+                # Use the drone's current altitude for the return trip
+                alt=return_home_position.get("relative_altitude")
+                or center_waypoint["alt"],
+                command=mavutil.mavlink.MAV_CMD_NAV_WAYPOINT,
+                param1=0,
+                param2=0,
+                param3=0,
+                param4=0,
+            )
+        )
 
         # Upload mission to drone
         print("\n--- Uploading Proximity Survey Mission to Drone ---")
@@ -352,7 +382,7 @@ class SurveyService:
         mission_complete = False
 
         # Store initial car position
-        initial_car_pos = await car_vehicle.position()
+        # initial_car_pos = await car_vehicle.position()
 
         while time.time() - scan_start_time < timeout:
             # Check if mission is complete
@@ -360,48 +390,54 @@ class SurveyService:
                 print("✅ Proximity survey completed successfully!")
                 # Automatically switch back to GUIDED mode
                 print("🎮 Switching drone back to GUIDED mode...")
-                drone_vehicle.set_mode(FlightMode.GUIDED)
+                # drone_vehicle.set_mode(FlightMode.GUIDED)
                 mission_complete = True
                 break
-
-            # Monitor car movement from survey center
-            if car_vehicle and initial_car_pos:
-                current_car_pos = await car_vehicle.position()
-                if current_car_pos:
-                    car_distance_from_center = await self.calculate_distance(
-                        center_waypoint, current_car_pos
-                    )
-
-                    # Check if car moved too far from center (500m limit)
-                    if car_distance_from_center > 500:
-                        print(f"\n🚨 CAR MOVED TOO FAR FROM SURVEY CENTER!")
-                        print(
-                            f"🚗 Car is {car_distance_from_center:.1f}m from center (max: 500m)"
-                        )
-                        print(f"🚁 Abandoning proximity survey...")
-
-                        self.scan_abandoned = True
-                        drone_vehicle.set_mode(FlightMode.GUIDED)
-                        break
-
-            await asyncio.sleep(2)
-
-        # Handle completion
+            await asyncio.sleep(1)
         if self.scan_abandoned:
             print(f"\n🚨 PROXIMITY SURVEY ABANDONED!")
-            drone_vehicle.set_mode(FlightMode.GUIDED)
+            if not drone_vehicle.set_mode(FlightMode.GUIDED):
+                print("❌ Failed to switch drone to GUIDED mode after abandon.")
             return False
         elif mission_complete:
-            # Mission completed successfully - already switched to GUIDED mode above
-            await asyncio.sleep(2)
+            print(
+                "🚁 Drone is returning to its starting position as per the mission plan."
+            )
+            print("🎮 Switching drone back to GUIDED mode to restore control.")
+            if not drone_vehicle.set_mode(FlightMode.GUIDED):
+                print(
+                    "❌ Failed to switch drone to GUIDED mode after survey completion."
+                )
+                # Don't return False here, the survey itself was a success.
+            await asyncio.sleep(2)  # Give time for mode change to propagate
             return True
         else:
             # Timeout occurred without completion
             print("\n⚠️ Proximity survey timed out!")
-            print("🎮 Switching drone back to GUIDED mode...")
-            drone_vehicle.set_mode(FlightMode.GUIDED)
+            print("🎮 Switching drone back to GUIDED mode as a safety measure...")
+            if not drone_vehicle.set_mode(FlightMode.GUIDED):
+                print("❌ Failed to switch drone back to GUIDED mode after timeout.")
             await asyncio.sleep(2)
             return False
+
+        #     await asyncio.sleep(2)
+        #
+        # # Handle completion
+        # if self.scan_abandoned:
+        #     print(f"\n🚨 PROXIMITY SURVEY ABANDONED!")
+        #     drone_vehicle.set_mode(FlightMode.GUIDED)
+        #     return False
+        # elif mission_complete:
+        #     # Mission completed successfully - already switched to GUIDED mode above
+        #     await asyncio.sleep(2)
+        #     return True
+        # else:
+        #     # Timeout occurred without completion
+        #     print("\n⚠️ Proximity survey timed out!")
+        #     print("🎮 Switching drone back to GUIDED mode...")
+        #     drone_vehicle.set_mode(FlightMode.GUIDED)
+        #     await asyncio.sleep(2)
+        #     return False
 
     async def _generate_constrained_lawnmower_waypoints(
         self, center_point: Dict, max_distance: float

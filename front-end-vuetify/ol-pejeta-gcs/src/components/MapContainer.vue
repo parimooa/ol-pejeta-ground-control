@@ -78,7 +78,240 @@
           >Coordination Off</v-btn>
         </div>
       </div>
+
+      <!-- Offline Map Controls -->
+      <div class="offline-controls pa-2">
+        <div class="toggle-wrapper">
+          <v-btn
+            @click="showOfflineDialog = true"
+            size="small"
+            :color="isDeviceOffline ? 'warning' : 'info'"
+            variant="outlined"
+            prepend-icon="mdi-map-marker-path"
+            :disabled="isDownloading"
+          >
+            <v-icon v-if="isDeviceOffline" class="mr-1">mdi-wifi-off</v-icon>
+            <span>{{ isDeviceOffline ? 'Offline Maps' : 'Download Maps' }}</span>
+          </v-btn>
+        </div>
+      </div>
     </div>
+
+    <!-- Offline Map Dialog -->
+    <v-dialog v-model="showOfflineDialog" max-width="600" persistent>
+      <v-card>
+        <v-card-title class="text-h6 font-weight-bold">
+          <v-icon color="primary" class="mr-2">mdi-map-marker-path</v-icon>
+          Offline Maps for Ol Pejeta Conservancy
+        </v-card-title>
+
+        <v-card-text>
+          <div v-if="isDeviceOffline" class="mb-4 pa-2 warning-bg rounded">
+            <v-icon color="warning" class="mr-2">mdi-wifi-off</v-icon>
+            <span class="font-weight-bold">You are currently offline.</span>
+            Using cached map tiles for Ol Pejeta Conservancy.
+          </div>
+
+          <p class="text-body-1 mb-4">
+            Download map tiles for the Ol Pejeta Conservancy area to use when offline.
+            Maps will be centered on the current view position.
+          </p>
+
+          <v-slider
+            v-model="offlineAreaRadius"
+            :min="1"
+            :max="10"
+            :step="1"
+            label="Download Area Radius"
+            hint="Larger radius requires more storage"
+            persistent-hint
+            thumb-label
+            :disabled="isDownloading"
+          >
+            <template v-slot:append>
+              <span class="text-body-2">{{ offlineAreaRadius }}km</span>
+            </template>
+          </v-slider>
+
+          <v-divider class="my-4"></v-divider>
+
+          <!-- Standard Map -->
+          <div class="d-flex align-center justify-space-between mb-4">
+            <div>
+              <div class="text-subtitle-1 font-weight-bold">
+                <v-icon class="mr-1">mdi-map</v-icon>
+                Standard Map
+              </div>
+              <div class="text-caption text-medium-emphasis">
+                {{ offlineTileCounts.osm }} tiles stored
+              </div>
+            </div>
+
+            <div class="d-flex">
+              <v-btn
+                size="small"
+                color="error"
+                variant="outlined"
+                class="mr-2"
+                @click="clearOfflineMapTiles('osm')"
+                :disabled="isDownloading || offlineTileCounts.osm === 0"
+              >
+                <v-icon size="small">mdi-delete</v-icon>
+              </v-btn>
+
+              <v-btn
+                size="small"
+                color="primary"
+                :loading="isDownloading && downloadingMapType === 'osm'"
+                :disabled="isDownloading && downloadingMapType !== 'osm'"
+                @click="downloadOfflineMapTiles('osm')"
+              >
+                <v-icon size="small" class="mr-1">mdi-download</v-icon>
+                Download
+              </v-btn>
+            </div>
+          </div>
+
+          <v-progress-linear
+            v-if="isDownloading && downloadingMapType === 'osm'"
+            :model-value="downloadProgress.osm.percentage"
+            color="primary"
+            height="8"
+            rounded
+            striped
+          >
+            <template v-slot:default>
+              {{ downloadProgress.osm.current }} / {{ downloadProgress.osm.total }} tiles
+            </template>
+          </v-progress-linear>
+
+          <!-- Satellite Map -->
+          <div class="d-flex align-center justify-space-between mb-4 mt-4">
+            <div>
+              <div class="text-subtitle-1 font-weight-bold">
+                <v-icon class="mr-1">mdi-satellite-variant</v-icon>
+                Satellite Map
+              </div>
+              <div class="text-caption text-medium-emphasis">
+                {{ offlineTileCounts.satellite }} tiles stored
+              </div>
+            </div>
+
+            <div class="d-flex">
+              <v-btn
+                size="small"
+                color="error"
+                variant="outlined"
+                class="mr-2"
+                @click="clearOfflineMapTiles('satellite')"
+                :disabled="isDownloading || offlineTileCounts.satellite === 0"
+              >
+                <v-icon size="small">mdi-delete</v-icon>
+              </v-btn>
+
+              <v-btn
+                size="small"
+                color="primary"
+                :loading="isDownloading && downloadingMapType === 'satellite'"
+                :disabled="isDownloading && downloadingMapType !== 'satellite'"
+                @click="downloadOfflineMapTiles('satellite')"
+              >
+                <v-icon size="small" class="mr-1">mdi-download</v-icon>
+                Download
+              </v-btn>
+            </div>
+          </div>
+
+          <v-progress-linear
+            v-if="isDownloading && downloadingMapType === 'satellite'"
+            :model-value="downloadProgress.satellite.percentage"
+            color="primary"
+            height="8"
+            rounded
+            striped
+          >
+            <template v-slot:default>
+              {{ downloadProgress.satellite.current }} / {{ downloadProgress.satellite.total }} tiles
+            </template>
+          </v-progress-linear>
+
+          <!-- Hybrid Map -->
+          <div class="d-flex align-center justify-space-between mb-4 mt-4">
+            <div>
+              <div class="text-subtitle-1 font-weight-bold">
+                <v-icon class="mr-1">mdi-layers</v-icon>
+                Hybrid Map
+              </div>
+              <div class="text-caption text-medium-emphasis">
+                {{ offlineTileCounts.hybrid }} tiles stored
+              </div>
+            </div>
+
+            <div class="d-flex">
+              <v-btn
+                size="small"
+                color="error"
+                variant="outlined"
+                class="mr-2"
+                @click="clearOfflineMapTiles('hybrid')"
+                :disabled="isDownloading || offlineTileCounts.hybrid === 0"
+              >
+                <v-icon size="small">mdi-delete</v-icon>
+              </v-btn>
+
+              <v-btn
+                size="small"
+                color="primary"
+                :loading="isDownloading && downloadingMapType === 'hybrid'"
+                :disabled="isDownloading && downloadingMapType !== 'hybrid'"
+                @click="downloadOfflineMapTiles('hybrid')"
+              >
+                <v-icon size="small" class="mr-1">mdi-download</v-icon>
+                Download
+              </v-btn>
+            </div>
+          </div>
+
+          <v-progress-linear
+            v-if="isDownloading && downloadingMapType === 'hybrid'"
+            :model-value="downloadProgress.hybrid.percentage"
+            color="primary"
+            height="8"
+            rounded
+            striped
+          >
+            <template v-slot:default>
+              {{ downloadProgress.hybrid.current }} / {{ downloadProgress.hybrid.total }} tiles
+            </template>
+          </v-progress-linear>
+
+          <v-alert
+            v-if="isDeviceOffline"
+            type="warning"
+            variant="tonal"
+            class="mt-4"
+            density="compact"
+          >
+            <div class="text-body-2">
+              <strong>Note:</strong> You cannot download new map tiles while offline.
+              Connect to the internet to download additional map tiles.
+            </div>
+          </v-alert>
+        </v-card-text>
+
+        <v-card-actions class="px-4 pb-4">
+          <v-spacer></v-spacer>
+          <v-btn
+            color="primary"
+            variant="outlined"
+            @click="showOfflineDialog = false"
+            :disabled="isDownloading"
+          >
+            Close
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -101,6 +334,18 @@ import * as ol from 'ol/extent'
 
 import droneIcon from '@/assets/drone.png'
 import vehicleIcon from '@/assets/car_top_view.png'
+
+// Import offline map utilities
+import {
+  createOfflineOSMSource,
+  createOfflineXYZSource,
+  downloadMapTiles,
+  countTiles,
+  clearTiles,
+  isOffline,
+  addConnectivityListeners,
+  removeConnectivityListeners
+} from '@/utils/OfflineMapUtils'
 
 const props = defineProps({
   distance: {
@@ -180,6 +425,23 @@ const mapType = ref('osm')
 const followVehicle = ref(true)
 const followDrone = ref(false)
 
+// Offline map state
+const isDeviceOffline = ref(isOffline())
+const showOfflineDialog = ref(false)
+const downloadProgress = ref({
+  osm: { current: 0, total: 0, percentage: 0 },
+  satellite: { current: 0, total: 0, percentage: 0 },
+  hybrid: { current: 0, total: 0, percentage: 0 }
+})
+const isDownloading = ref(false)
+const downloadingMapType = ref('')
+const offlineTileCounts = ref({
+  osm: 0,
+  satellite: 0,
+  hybrid: 0
+})
+const offlineAreaRadius = ref(5) // 5km radius by default
+
 // Following system variables
 let lastFollowUpdate = 0
 const followUpdateThrottle = 100 // milliseconds between follow updates
@@ -223,6 +485,93 @@ const stopCoordination = async () => {
   } catch (error) {
     console.error('Failed to stop coordination:', error)
   }
+}
+
+// Offline map functions
+const updateOfflineTileCounts = async () => {
+  try {
+    const [osmCount, satelliteCount, hybridCount] = await Promise.all([
+      countTiles('osm'),
+      countTiles('satellite'),
+      countTiles('hybrid')
+    ])
+
+    offlineTileCounts.value = {
+      osm: osmCount,
+      satellite: satelliteCount,
+      hybrid: hybridCount
+    }
+
+    console.log('Updated offline tile counts:', offlineTileCounts.value)
+  } catch (error) {
+    console.error('Error counting offline tiles:', error)
+  }
+}
+
+const downloadOfflineMapTiles = async (type) => {
+  if (isDownloading.value) {
+    console.warn('A download is already in progress')
+    return
+  }
+
+  try {
+    isDownloading.value = true
+    downloadingMapType.value = type
+
+    // Reset progress for this map type
+    downloadProgress.value[type] = { current: 0, total: 0, percentage: 0 }
+
+    // Get the current map center
+    const view = map.getView()
+    const center = toLonLat(view.getCenter())
+
+    console.log(`Starting download of ${type} map tiles for Ol Pejeta...`)
+
+    const result = await downloadMapTiles({
+      mapType: type,
+      center: center,
+      radius: offlineAreaRadius.value,
+      progressCallback: (current, total) => {
+        downloadProgress.value[type] = {
+          current,
+          total,
+          percentage: Math.round((current / total) * 100)
+        }
+      }
+    })
+
+    console.log(`Download complete for ${type} map:`, result)
+
+    // Update tile counts after download
+    await updateOfflineTileCounts()
+  } catch (error) {
+    console.error(`Error downloading ${type} map tiles:`, error)
+  } finally {
+    isDownloading.value = false
+    downloadingMapType.value = ''
+  }
+}
+
+const clearOfflineMapTiles = async (type) => {
+  try {
+    await clearTiles(type)
+    console.log(`Cleared offline tiles for ${type} map`)
+
+    // Update tile counts after clearing
+    await updateOfflineTileCounts()
+  } catch (error) {
+    console.error(`Error clearing ${type} map tiles:`, error)
+  }
+}
+
+const handleOnlineStatus = () => {
+  isDeviceOffline.value = false
+  console.log('Device is online')
+}
+
+const handleOfflineStatus = () => {
+  isDeviceOffline.value = true
+  console.log('Device is offline')
 }
 
 // Map utility functions
@@ -532,23 +881,25 @@ const initMap = () => {
     },
   })
 
-  // Create base layers
+  // Create base layers with offline capability
   osmLayer = new TileLayer({
-    source: new OSM(),
+    source: createOfflineOSMSource(),
     visible: true,
   })
 
   satelliteLayer = new TileLayer({
-    source: new XYZ({
+    source: createOfflineXYZSource({
       url: 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+      mapType: 'satellite',
       maxZoom: 40,
     }),
     visible: false,
   })
 
   hybridLabelsLayer = new TileLayer({
-    source: new XYZ({
+    source: createOfflineXYZSource({
       url: 'https://mt1.google.com/vt/lyrs=h&x={x}&y={y}&z={z}',
+      mapType: 'hybrid',
       maxZoom: 40,
     }),
     visible: false,
@@ -761,6 +1112,12 @@ watch(followDrone, (newValue) => {
 
 onMounted(() => {
   initMap()
+
+  // Initialize offline tile counts
+  updateOfflineTileCounts()
+
+  // Set up online/offline event listeners
+  addConnectivityListeners(handleOnlineStatus, handleOfflineStatus)
 })
 
 onUnmounted(() => {
@@ -768,6 +1125,9 @@ onUnmounted(() => {
     map.setTarget(null)
     map = null
   }
+
+  // Remove online/offline event listeners
+  removeConnectivityListeners(handleOnlineStatus, handleOfflineStatus)
 })
 </script>
 
@@ -826,5 +1186,16 @@ onUnmounted(() => {
   margin-left: 11px;
   margin-bottom: 10px;
   gap: 8px;
+}
+
+.offline-controls {
+  display: inline-flex;
+  margin-left: 11px;
+  margin-bottom: 10px;
+}
+
+.warning-bg {
+  background-color: rgba(255, 193, 7, 0.15);
+  border: 1px solid rgba(255, 193, 7, 0.3);
 }
 </style>

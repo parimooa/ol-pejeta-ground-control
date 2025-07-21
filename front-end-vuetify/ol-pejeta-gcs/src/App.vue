@@ -99,9 +99,7 @@
           :is-vehicle-connected="isVehicleConnected"
           :vehicle-telemetry-data="vehicleData"
           :vehicle-waypoints="vehicleData.mission.mission_waypoints"
-          @emergency-stop="emergencyStop"
-          @start-mission="startMission"
-        />
+             />
       </div>
     </v-main>
 
@@ -215,6 +213,10 @@ const showSnackbar = ref(false)
 const snackbarMessage = ref('')
 const snackbarColor = ref('success')
 
+// Waypoint navigation state
+const nextWaypointInfo = ref(null)
+const waypointReached = ref(false)
+
 // WebSocket connections
 const wsConnections = reactive({
   drone: null,
@@ -250,6 +252,59 @@ const missionSteps = ref([
   { text: 'Data collection at points A, B, C', status: 'pending' },
   { text: 'Return to base', status: 'pending' },
 ])
+
+// Function to fetch next waypoint information
+const fetchNextWaypointInfo = async () => {
+  if (!isVehicleConnected.value) return
+
+  try {
+    const response = await fetch('http://localhost:8000/survey/waypoint/next?vehicle_type=car')
+
+    if (!response.ok) {
+      console.error('Failed to fetch next waypoint info:', response.statusText)
+      return
+    }
+
+    const data = await response.json()
+    nextWaypointInfo.value = data
+
+    // Update instructions with direction to next waypoint
+    if (nextWaypointInfo.value) {
+      if (waypointReached.value) {
+        instructions.value = `You have reached waypoint ${nextWaypointInfo.value.waypoint_number}. Survey is available at this location.`
+      } else {
+        // Get current vehicle heading
+        const currentHeading = vehicleData.velocity.heading
+        const targetBearing = nextWaypointInfo.value.bearing
+
+        // Calculate the relative angle between current heading and target bearing
+        let relativeAngle = targetBearing - currentHeading
+        // Normalize to -180 to 180 degrees
+        if (relativeAngle > 180) relativeAngle -= 360
+        if (relativeAngle < -180) relativeAngle += 360
+
+        // Determine turn direction
+        let turnDirection = ''
+        if (Math.abs(relativeAngle) < 15) {
+          turnDirection = 'Continue straight'
+        } else if (relativeAngle > 0) {
+          turnDirection = `Turn right (${Math.abs(Math.round(relativeAngle))}°)`
+        } else {
+          turnDirection = `Turn left (${Math.abs(Math.round(relativeAngle))}°)`
+        }
+
+        instructions.value = `${turnDirection} to head ${nextWaypointInfo.value.direction} for ${Math.round(nextWaypointInfo.value.distance)}m to reach waypoint ${nextWaypointInfo.value.waypoint_number} of ${nextWaypointInfo.value.total_waypoints}.`
+
+        // Log the instructions for debugging
+        console.log('Updated operator instructions:', instructions.value)
+      }
+    }
+
+    console.log('Next waypoint info:', nextWaypointInfo.value)
+  } catch (error) {
+    console.error('Error fetching next waypoint info:', error)
+  }
+}
 
 // Computed properties
 const status = computed(() => {

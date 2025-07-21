@@ -1,12 +1,12 @@
 <template>
-  <v-card 
+  <v-card
     class="mb-4"
     variant="outlined"
     :color="surveyButtonEnabled ? 'primary' : 'grey-lighten-2'"
   >
     <v-card-title class="text-subtitle-1 font-weight-bold d-flex align-center">
-      <v-icon 
-        :icon="surveyButtonEnabled ? 'mdi-map-search' : 'mdi-map-search-outline'" 
+      <v-icon
+        :icon="surveyButtonEnabled ? 'mdi-map-search' : 'mdi-map-search-outline'"
         class="mr-2"
         :color="surveyButtonEnabled ? 'primary' : 'grey'"
       />
@@ -14,12 +14,12 @@
     </v-card-title>
     <v-card-text>
       <div class="text-body-2 text-medium-emphasis mb-3">
-        {{ surveyButtonEnabled 
-          ? `Drone is within ${distance}m of vehicle - survey available` 
-          : `Move closer (${distance}m away, need ≤5m) to enable survey` 
+        {{ surveyButtonEnabled
+          ? `Drone is within ${distance}m of vehicle - survey available`
+          : `Move closer (${distance}m away, need ≤5m) to enable survey`
         }}
       </div>
-      
+
       <v-btn
         :disabled="!surveyButtonEnabled"
         :color="surveyButtonEnabled ? 'primary' : 'grey'"
@@ -45,7 +45,7 @@
           <v-icon color="primary" class="mr-2">mdi-map-search</v-icon>
           Survey Confirmation
         </v-card-title>
-        
+
         <v-card-text>
           <div class="text-body-1 mb-3">
             Do you want to conduct a lawnmower survey pattern at the current vehicle position?
@@ -54,10 +54,10 @@
           <div class="text-body-2 text-medium-emphasis">
             <v-icon size="small" class="mr-1">mdi-information-outline</v-icon>
             The drone will survey in a lawnmower pattern centered on the vehicle's current location,
-            staying within 500m distance. Survey will be abandoned if the vehicle moves too far.
+            staying within 500m distance. Survey will be abandoned if the vehicle moves 500m from ground vehicle.
           </div>
         </v-card-text>
-        
+
         <v-card-actions class="px-4 pb-4">
           <v-btn
             color="grey"
@@ -104,7 +104,7 @@ const surveyInProgress = ref(false)
 const initiateSurvey = async () => {
   surveyInProgress.value = true
   showSurveyDialog.value = false
-  
+
   try {
     await emit('initiate-survey')
   } catch (error) {

@@ -1,3 +1,4 @@
+
 <template>
   <div class="map-container">
     <div ref="mapElement" class="map" />
@@ -56,6 +57,7 @@
           </v-btn-toggle>
         </div>
       </div>
+
       <!-- Coordination Controls -->
       <div class="coordination-controls pa-2">
         <div class="toggle-wrapper">
@@ -76,7 +78,6 @@
           >Coordination Off</v-btn>
         </div>
       </div>
-
     </div>
   </div>
 </template>
@@ -96,6 +97,7 @@ import Circle from 'ol/geom/Circle'
 import { Vector as VectorLayer } from 'ol/layer'
 import { Vector as VectorSource } from 'ol/source'
 import { Circle as CircleStyle, Fill, Icon, Stroke, Style, Text } from 'ol/style'
+import * as ol from 'ol/extent'
 
 import droneIcon from '@/assets/drone.png'
 import vehicleIcon from '@/assets/car_top_view.png'
@@ -128,6 +130,10 @@ const props = defineProps({
   isDroneFollowing: {
     type: Boolean,
     default: false,
+  },
+  vehicleWaypoints: {
+    type: Object,
+    default: () => ({})
   }
 })
 
@@ -145,6 +151,7 @@ let osmLayer = null
 let satelliteLayer = null
 let hybridLabelsLayer = null
 
+// Features
 let droneFeature = null
 let vehicleFeature = null
 let safetyRadiusFeature = null
@@ -152,19 +159,30 @@ let distanceLineFeature = null
 let distanceLabelFeature = null
 let vectorSource = null
 let vectorLayer = null
-let waypointFeatures = {}
 
+// Waypoint layers
+let waypointSource = null
+let waypointLayer = null
+let routeSource = null
+let routeLayer = null
+
+// State variables
 const currentPosition = ref({ lat: 0.0078, lng: 36.9759 })
 const dronePosition = ref({ x: 0, y: 0 })
 const vehiclePosition = ref({ x: 0, y: 0 })
 const coordinationLoading = ref(false)
 
-const manualControl = ref(true) // Toggle between manual and telemetry control
-const mapType = ref('osm') // 'osm', 'satellite', or 'hybrid'
-const followVehicle = ref(true) // Whether to follow the vehicle
-const followDrone = ref(false) // Whether to follow the drone
+const manualControl = ref(true)
+const mapType = ref('osm')
+const followVehicle = ref(true)
+const followDrone = ref(false)
 
-// Helper computed property to check if position data is available
+// Following system variables
+let lastFollowUpdate = 0
+const followUpdateThrottle = 100 // milliseconds between follow updates
+let isUserInteracting = false
+
+// Helper computed properties
 const dronePositionAvailable = computed(() => {
   return props.isDroneConnected &&
     props.droneTelemetryData &&
@@ -181,497 +199,565 @@ const vehiclePositionAvailable = computed(() => {
     props.vehicleTelemetryData.position.longitude !== null
 })
 
+const isManualControlEnabled = computed(() => {
+  return manualControl.value && !props.isDroneConnected && !props.isVehicleConnected
+})
 
-  const startCoordination = async () => {
-    try {
-      await fetch('http://localhost:8000/coordination/start', { method: 'POST' });
-      console.log('Coordination started');
-      // You can also emit an event to show a snackbar in App.vue
-    } catch (error) {
-      console.error('Failed to start coordination:', error);
-    }
-  };
+// Coordination functions
+const startCoordination = async () => {
+  try {
+    await fetch('http://localhost:8000/coordination/start', { method: 'POST' })
+    console.log('Coordination started')
+  } catch (error) {
+    console.error('Failed to start coordination:', error)
+  }
+}
 
-  const stopCoordination = async () => {
-    try {
-      await fetch('http://localhost:8000/coordination/stop', { method: 'POST' });
-      console.log('Coordination stopped');
-    } catch (error) {
-      console.error('Failed to stop coordination:', error);
-    }
-  };
+const stopCoordination = async () => {
+  try {
+    await fetch('http://localhost:8000/coordination/stop', { method: 'POST' })
+    console.log('Coordination stopped')
+  } catch (error) {
+    console.error('Failed to stop coordination:', error)
+  }
+}
 
-  const formatCoordinate = (value, type) => {
-    const absValue = Math.abs(value)
-    const degrees = Math.floor(absValue)
-    const minutes = Math.floor((absValue - degrees) * 60)
-    const seconds = ((absValue - degrees - minutes / 60) * 3600).toFixed(2)
+// Map utility functions
+const switchMapType = newType => {
+  if (!map) return
 
-    let direction
-    if (type === 'lat') {
-      direction = value >= 0 ? ' N' : ' S'
-    } else {
-      direction = value >= 0 ? ' E' : ' W'
-    }
+  osmLayer.setVisible(false)
+  satelliteLayer.setVisible(false)
+  hybridLabelsLayer.setVisible(false)
 
-    return `${degrees}° ${minutes}' ${seconds}"${direction}`
+  switch (newType) {
+    case 'osm':
+      osmLayer.setVisible(true)
+      break
+    case 'satellite':
+      satelliteLayer.setVisible(true)
+      break
+    case 'hybrid':
+      satelliteLayer.setVisible(true)
+      hybridLabelsLayer.setVisible(true)
+      break
   }
 
-  // Function to switch map types
-  const switchMapType = newType => {
-    if (!map) return
+  console.log(`Map type switched to: ${newType}`)
+}
 
-    // Hide all base layers first
-    osmLayer.setVisible(false)
-    satelliteLayer.setVisible(false)
-    hybridLabelsLayer.setVisible(false)
+const gpsToMapCoordinates = (lat, lng) => {
+  return fromLonLat([lng, lat])
+}
 
-    // Show appropriate layers based on selection
-    switch (newType) {
-      case 'osm':
-        osmLayer.setVisible(true)
-        break
-      case 'satellite':
-        satelliteLayer.setVisible(true)
-        break
-      case 'hybrid':
-        satelliteLayer.setVisible(true)
-        hybridLabelsLayer.setVisible(true)
-        break
-    }
+// Improved following functions
+const centerMapOnVehicle = (coordinates) => {
+  if (!map || !followVehicle.value || isUserInteracting) return
 
-    console.log(`Map type switched to: ${newType}`)
+  const now = Date.now()
+  if (now - lastFollowUpdate < followUpdateThrottle) return
+
+  lastFollowUpdate = now
+
+  // Set center directly without animation for smooth following
+  const view = map.getView()
+  view.setCenter(coordinates)
+}
+
+const centerMapOnDrone = (coordinates) => {
+  if (!map || !followDrone.value || isUserInteracting) return
+
+  const now = Date.now()
+  if (now - lastFollowUpdate < followUpdateThrottle) return
+
+  lastFollowUpdate = now
+
+  // Set center directly without animation for smooth following
+  const view = map.getView()
+  view.setCenter(coordinates)
+}
+
+// Telemetry update functions
+const updateDroneFromTelemetry = () => {
+  if (!props.isDroneConnected || !dronePositionAvailable.value || !droneFeature) {
+    return
   }
 
-  // Function to convert GPS coordinates to map coordinates
-  const gpsToMapCoordinates = (lat, lng) => {
-    return fromLonLat([lng, lat])
+  const { latitude, longitude } = props.droneTelemetryData.position
+  const mapCoords = gpsToMapCoordinates(latitude, longitude)
+
+  // Update drone position
+  dronePosition.value = { x: mapCoords[0], y: mapCoords[1] }
+
+  // Center map on drone if following is enabled
+  if (followDrone.value && !isUserInteracting) {
+    centerMapOnDrone([dronePosition.value.x, dronePosition.value.y])
   }
 
-  // Function to center map on coordinates
-  const centerMapOn = (coordinates) => {
-    if (!map) return
+  // Update map features
+  updateMapFeatures()
 
-    const view = map.getView()
-    view.animate({
-      center: coordinates,
-      duration: 500, // Smooth transition
-      easing: (t) => t // Linear easing
-    })
+  // Emit position update
+  emit('update:drone-position', dronePosition.value)
+  console.log(`Drone position updated from telemetry: ${latitude}, ${longitude}`)
+}
+
+const updateVehicleFromTelemetry = () => {
+  if (!props.isVehicleConnected || !vehiclePositionAvailable.value || !vehicleFeature) {
+    return
   }
 
-  // Function to update drone position from telemetry data
-  const updateDroneFromTelemetry = () => {
-    if (!props.isDroneConnected || !dronePositionAvailable.value || !droneFeature) {
-      return
-    }
+  const { latitude, longitude } = props.vehicleTelemetryData.position
+  const heading = props.vehicleTelemetryData.velocity.heading
+  const mapCoords = gpsToMapCoordinates(latitude, longitude)
 
-    const { latitude, longitude } = props.droneTelemetryData.position
-    const mapCoords = gpsToMapCoordinates(latitude, longitude)
+  // Update vehicle position
+  vehiclePosition.value = { x: mapCoords[0], y: mapCoords[1] }
 
-    // Update drone position
-    dronePosition.value = { x: mapCoords[0], y: mapCoords[1] }
+  // Update the vehicle feature with new coordinates
+  vehicleFeature.getGeometry().setCoordinates([vehiclePosition.value.x, vehiclePosition.value.y])
 
-    // Center map on drone if following is enabled
-    if (followDrone.value) {
-      centerMapOn([dronePosition.value.x, dronePosition.value.y])
-    }
-
-    // Update map features
-    updateMapFeatures()
-
-    // Emit position update
-    emit('update:drone-position', dronePosition.value)
-    console.log(`Drone position updated from telemetry: ${latitude}, ${longitude}`)
+  // Set the heading property on the feature for the style function to use
+  if (heading !== undefined) {
+    vehicleFeature.set('heading', heading)
   }
 
-  // Function to update vehicle position from telemetry data
-  const updateVehicleFromTelemetry = () => {
-    if (!props.isVehicleConnected || !vehiclePositionAvailable.value || !vehicleFeature) {
-      return
-    }
-
-    const { latitude, longitude } = props.vehicleTelemetryData.position
-    const heading = props.vehicleTelemetryData.velocity.heading
-    const mapCoords = gpsToMapCoordinates(latitude, longitude)
-
-    // Update vehicle position
-    vehiclePosition.value = { x: mapCoords[0], y: mapCoords[1] }
-
-    // Update the vehicle feature with new coordinates
-    vehicleFeature.getGeometry().setCoordinates([vehiclePosition.value.x, vehiclePosition.value.y])
-
-    // Set the heading property on the feature for the style function to use
-    if (heading !== undefined) {
-      vehicleFeature.set('heading', heading)
-    }
-
-    // Center map on vehicle if following is enabled
-    if (followVehicle.value) {
-      centerMapOn([vehiclePosition.value.x, vehiclePosition.value.y])
-    }
-
-    // Update map features (but remove the problematic setStyle() call)
-    updateMapFeatures()
-
-    // Emit position update
-    emit('update:vehicle-position', vehiclePosition.value)
-    console.log(`Vehicle position updated from telemetry: ${latitude}, ${longitude}, heading: ${heading}`)
+  // Center map on vehicle if following is enabled - use the new smooth method
+  if (followVehicle.value && !isUserInteracting) {
+    centerMapOnVehicle([vehiclePosition.value.x, vehiclePosition.value.y])
   }
 
-  const updateMapFeatures = () => {
-    if (!map || !vectorSource) return
+  // Update map features
+  updateMapFeatures()
 
-    droneFeature.getGeometry().setCoordinates([dronePosition.value.x, dronePosition.value.y])
-    vehicleFeature.getGeometry().setCoordinates([vehiclePosition.value.x, vehiclePosition.value.y])
+  // Emit position update
+  emit('update:vehicle-position', vehiclePosition.value)
+  console.log(`Vehicle position updated from telemetry: ${latitude}, ${longitude}, heading: ${heading}`)
+}
 
-    safetyRadiusFeature.getGeometry().setCenter([dronePosition.value.x, dronePosition.value.y])
+const updateMapFeatures = () => {
+  if (!map || !vectorSource) return
 
-    distanceLineFeature.getGeometry().setCoordinates([
-      [dronePosition.value.x, dronePosition.value.y],
-      [vehiclePosition.value.x, vehiclePosition.value.y],
-    ])
+  droneFeature.getGeometry().setCoordinates([dronePosition.value.x, dronePosition.value.y])
+  vehicleFeature.getGeometry().setCoordinates([vehiclePosition.value.x, vehiclePosition.value.y])
 
-    const midPoint = [
-      (dronePosition.value.x + vehiclePosition.value.x) / 2,
-      (dronePosition.value.y + vehiclePosition.value.y) / 2,
-    ]
-    distanceLabelFeature.getGeometry().setCoordinates(midPoint)
+  safetyRadiusFeature.getGeometry().setCenter([dronePosition.value.x, dronePosition.value.y])
 
-    // Update distance label by setting a new style
-    distanceLabelFeature.setStyle(new Style({
-      text: new Text({
-        text: props.distance + 'm',
-        fill: new Fill({
-          color: 'white',
-        }),
-        stroke: new Stroke({
-          color: 'rgba(142, 68, 173, 0.8)',
-          width: 5,
-        }),
-        font: '12px sans-serif',
-        padding: [3, 5, 3, 5],
+  distanceLineFeature.getGeometry().setCoordinates([
+    [dronePosition.value.x, dronePosition.value.y],
+    [vehiclePosition.value.x, vehiclePosition.value.y],
+  ])
+
+  const midPoint = [
+    (dronePosition.value.x + vehiclePosition.value.x) / 2,
+    (dronePosition.value.y + vehiclePosition.value.y) / 2,
+  ]
+  distanceLabelFeature.getGeometry().setCoordinates(midPoint)
+
+  // Update distance label
+  distanceLabelFeature.setStyle(new Style({
+    text: new Text({
+      text: props.distance + 'm',
+      fill: new Fill({
+        color: 'white',
       }),
+      stroke: new Stroke({
+        color: 'rgba(142, 68, 173, 0.8)',
+        width: 5,
+      }),
+      font: '12px sans-serif',
+      padding: [3, 5, 3, 5],
+    }),
+  }))
+
+  vectorSource.changed()
+}
+
+// Waypoint functions
+const updateWaypointsOnMap = (waypointsObj) => {
+  if (!waypointSource || !routeSource) return
+
+  // Clear existing waypoint features
+  waypointSource.clear()
+  routeSource.clear()
+
+  // Convert waypoints object to array and sort by sequence
+  const waypointsArray = Object.values(waypointsObj).sort((a, b) => a.seq - b.seq)
+
+  if (waypointsArray.length === 0) return
+
+  const coordinates = []
+
+  waypointsArray.forEach((waypoint) => {
+    const coord = fromLonLat([waypoint.lon, waypoint.lat])
+    coordinates.push(coord)
+
+    // Create waypoint marker with number
+    const feature = new Feature({
+      geometry: new Point(coord),
+      waypoint: waypoint
+    })
+
+    // Style with waypoint number
+    feature.setStyle(new Style({
+      image: new CircleStyle({
+        radius: 15,
+        fill: new Fill({ color: '#ff6b35' }),
+        stroke: new Stroke({ color: 'white', width: 2 })
+      }),
+      text: new Text({
+        text: (waypoint.seq + 1).toString(),
+        font: 'bold 12px Arial',
+        fill: new Fill({ color: 'white' })
+      })
     }))
 
-    vectorSource.changed()
+    waypointSource.addFeature(feature)
+  })
+
+  // Add route line connecting waypoints
+  if (coordinates.length > 1) {
+    const routeFeature = new Feature({
+      geometry: new LineString(coordinates)
+    })
+
+    routeFeature.setStyle(new Style({
+      stroke: new Stroke({
+        color: '#ff6b35',
+        width: 3,
+        lineDash: [5, 5]
+      })
+    }))
+
+    routeSource.addFeature(routeFeature)
+
+    // Zoom to fit the waypoints
+    const extent = routeSource.getExtent()
+    if (extent && !ol.isEmpty(extent)) {
+      map.getView().fit(extent, { padding: [50, 50, 50, 50], maxZoom: 16 })
+    }
   }
+}
 
-  const initMap = () => {
-    vectorSource = new VectorSource()
+const clearWaypoints = () => {
+  if (waypointSource) waypointSource.clear()
+  if (routeSource) routeSource.clear()
+}
 
-    vectorLayer = new VectorLayer({
-      source: vectorSource,
-      style (feature) {
-        const type = feature.get('type')
-                 if (type === 'waypoint') {
-                   const isVisited = feature.get('isVisited')
-                   const isCurrent = feature.get('isCurrent')
+// Map initialization
+const initMap = () => {
+  vectorSource = new VectorSource()
 
-                   let fillColor = 'rgba(255, 255, 255, 0.6)'
-                   let strokeColor = '#6c757d' // Grey for pending
-                   let radius = 6
-                   let zIndex = 10
+  vectorLayer = new VectorLayer({
+    source: vectorSource,
+    style(feature) {
+      const type = feature.get('type')
 
-                   if (isVisited) {
-                     fillColor = 'rgba(40, 167, 69, 0.8)' // Green
-                     strokeColor = '#1a7431'
-                     zIndex = 5
-                   } else if (isCurrent) {
-                     fillColor = 'rgba(255, 193, 7, 0.9)' // Yellow
-                     strokeColor = '#b38600'
-                   }
-                 } else
+      if (type === 'drone') {
+        let color = props.isDroneConnected ? '#2ecc71' : '#3498db'
+        let strokeColor = props.isDroneConnected ? 'rgba(46, 204, 113, 0.5)' : 'rgba(52, 152, 219, 0.5)'
 
-
-        if (type === 'drone') {
-          // Different styling based on telemetry connection
-          let color = props.isDroneConnected ? '#2ecc71' : '#3498db'
-          let strokeColor = props.isDroneConnected ? 'rgba(46, 204, 113, 0.5)' : 'rgba(52, 152, 219, 0.5)'
-
-          // Override style if the drone is in safety-follow mode
-          if (props.isDroneFollowing) {
-            color = '#f39c12' // Warning orange
-            strokeColor = 'rgba(243, 156, 18, 0.7)'
-          }
-
-
-          return new Style({
-            image: new Icon({
-              src: droneIcon,
-              scale: 0.1,
-              anchor: [0.5, 0.5],
-              anchorXUnits: 'fraction',
-              anchorYUnits: 'fraction',
-            }),
-            // Optional: Add a circle behind the icon for better visibility
-            stroke: new Stroke({
-              color: strokeColor,
-              width: 3,
-            }),
-            fill: new Fill({
-              color,
-            }),
-          })
-
-        } else if (type === 'car') {
-           const heading = feature.get('heading') || 0
-          const headingInRadians = (heading *  Math.PI) / 180
-          return new Style({
-            image: new Icon({
-              src: vehicleIcon,
-              scale: 0.07,
-              anchor: [0.5, 0.5],
-              anchorXUnits: 'fraction',
-              anchorYUnits: 'fraction',
-              rotateWithView: true,
-              rotation: headingInRadians,
-            }),
-            // Optional: Add a circle behind the icon for better visibility
-            stroke: new Stroke({
-              color: 'rgba(231, 76, 60, 0.5)',
-              width: 3,
-            }),
-            fill: new Fill({
-              color: '#e74c3c',
-            }),
-          })
-
-        } else if (type === 'safety-radius') {
-          return new Style({
-            stroke: new Stroke({
-              color: 'rgba(230, 126, 34, 0.7)',
-              width: 2,
-              lineDash: [5, 5],
-            }),
-
-            fill: new Fill({
-              color: 'rgba(230, 126, 34, 0.1)',
-            }),
-          })
-        } else if (type === 'distance-line') {
-          return new Style({
-            stroke: new Stroke({
-              color: 'rgba(142, 68, 173, 0.7)',
-              width: 2,
-            }),
-          })
-        } else if (type === 'distance-label') {
-          return new Style({
-            text: new Text({
-              text: props.distance + 'm',
-              fill: new Fill({
-                color: 'white',
-              }),
-              stroke: new Stroke({
-                color: 'rgba(142, 68, 173, 0.8)',
-                width: 5,
-              }),
-              font: '12px sans-serif',
-              padding: [3, 5, 3, 5],
-            }),
-          })
+        if (props.isDroneFollowing) {
+          color = '#f39c12'
+          strokeColor = 'rgba(243, 156, 18, 0.7)'
         }
-      },
-    })
 
-    // Create different map layers
-    osmLayer = new TileLayer({
-      source: new OSM(),
-      visible: true,
-    })
-
-    // Using Google Satellite tiles (you can replace with other providers)
-    satelliteLayer = new TileLayer({
-      source: new XYZ({
-        url: 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
-        maxZoom: 40,
-      }),
-      visible: false,
-    })
-
-    // Hybrid labels layer (roads, labels, etc. over satellite)
-    hybridLabelsLayer = new TileLayer({
-      source: new XYZ({
-        url: 'https://mt1.google.com/vt/lyrs=h&x={x}&y={y}&z={z}',
-        maxZoom: 40,
-      }),
-      visible: false,
-    })
-
-    map = new Map({
-      target: mapElement.value,
-      layers: [
-        osmLayer,
-        satelliteLayer,
-        hybridLabelsLayer,
-        vectorLayer,
-      ],
-      view: new View({
-        center: fromLonLat([36.9759, 0.0078]), // Ol Pejeta coordinates
-        zoom: 17,
-      }),
-    })
-
-    const center = map.getView().getCenter()
-
-    // Initial positions
-    dronePosition.value = {
-      x: center[0] - 500,
-      y: center[1] - 500,
-    }
-
-    vehiclePosition.value = {
-      x: center[0] + 500,
-      y: center[1] + 500,
-    }
-
-    // Create features
-    droneFeature = new Feature({
-      geometry: new Point([dronePosition.value.x, dronePosition.value.y]),
-      type: 'drone',
-    })
-
-    vehicleFeature = new Feature({
-      geometry: new Point([vehiclePosition.value.x, vehiclePosition.value.y]),
-      type: 'car',
-    })
-
-    safetyRadiusFeature = new Feature({
-      geometry: new Circle([dronePosition.value.x, dronePosition.value.y], 200),
-      type: 'safety-radius',
-    })
-
-    distanceLineFeature = new Feature({
-      geometry: new LineString([
-        [dronePosition.value.x, dronePosition.value.y],
-        [vehiclePosition.value.x, vehiclePosition.value.y],
-      ]),
-      type: 'distance-line',
-    })
-
-    const midPoint = [
-      (dronePosition.value.x + vehiclePosition.value.x) / 2,
-      (dronePosition.value.y + vehiclePosition.value.y) / 2,
-    ]
-
-    distanceLabelFeature = new Feature({
-      geometry: new Point(midPoint),
-      type: 'distance-label',
-    })
-
-    vectorSource.addFeatures([
-      droneFeature,
-      vehicleFeature,
-      safetyRadiusFeature,
-      distanceLineFeature,
-      distanceLabelFeature,
-    ])
-
-    // Map interaction handlers
-    let selectedFeature = null
-    let userInteracting = false
-
-    map.on('pointermove', function (e) {
-      if (selectedFeature && isManualControlEnabled.value) {
-        const coords = e.coordinate
-        if (selectedFeature === droneFeature) {
-          dronePosition.value = { x: coords[0], y: coords[1] }
-          emit('update:drone-position', dronePosition.value)
-        } else if (selectedFeature === vehicleFeature) {
-          vehiclePosition.value = { x: coords[0], y: coords[1] }
-          emit('update:vehicle-position', vehiclePosition.value)
-        }
-        updateMapFeatures()
-      }
-    })
-
-    map.on('pointerdown', function (e) {
-      if (isManualControlEnabled.value) {
-        map.forEachFeatureAtPixel(e.pixel, function (feature) {
-          if (feature === droneFeature || feature === vehicleFeature) {
-            selectedFeature = feature
-            return true
-          }
+        return new Style({
+          image: new Icon({
+            src: droneIcon,
+            scale: 0.1,
+            anchor: [0.5, 0.5],
+            anchorXUnits: 'fraction',
+            anchorYUnits: 'fraction',
+          }),
+          stroke: new Stroke({
+            color: strokeColor,
+            width: 3,
+          }),
+          fill: new Fill({
+            color,
+          }),
+        })
+      } else if (type === 'car') {
+        const heading = feature.get('heading') || 0
+        const headingInRadians = (heading * Math.PI) / 180
+        return new Style({
+          image: new Icon({
+            src: vehicleIcon,
+            scale: 0.07,
+            anchor: [0.5, 0.5],
+            anchorXUnits: 'fraction',
+            anchorYUnits: 'fraction',
+            rotateWithView: true,
+            rotation: headingInRadians,
+          }),
+          stroke: new Stroke({
+            color: 'rgba(231, 76, 60, 0.5)',
+            width: 3,
+          }),
+          fill: new Fill({
+            color: '#e74c3c',
+          }),
+        })
+      } else if (type === 'safety-radius') {
+        return new Style({
+          stroke: new Stroke({
+            color: 'rgba(230, 126, 34, 0.7)',
+            width: 2,
+            lineDash: [5, 5],
+          }),
+          fill: new Fill({
+            color: 'rgba(230, 126, 34, 0.1)',
+          }),
+        })
+      } else if (type === 'distance-line') {
+        return new Style({
+          stroke: new Stroke({
+            color: 'rgba(142, 68, 173, 0.7)',
+            width: 2,
+          }),
         })
       }
+    },
+  })
 
-      // Disable following when user interacts with map
-      userInteracting = true
-      followVehicle.value = false
-      followDrone.value = false
-    })
+  // Create base layers
+  osmLayer = new TileLayer({
+    source: new OSM(),
+    visible: true,
+  })
 
-    map.on('pointerup', function () {
-      selectedFeature = null
-      userInteracting = false
-    })
+  satelliteLayer = new TileLayer({
+    source: new XYZ({
+      url: 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+      maxZoom: 40,
+    }),
+    visible: false,
+  })
 
-    // Disable following when user pans the map
-    map.on('movestart', function () {
-      if (!userInteracting) return // Only disable if user initiated the move
-      followVehicle.value = false
-      followDrone.value = false
-    })
+  hybridLabelsLayer = new TileLayer({
+    source: new XYZ({
+      url: 'https://mt1.google.com/vt/lyrs=h&x={x}&y={y}&z={z}',
+      maxZoom: 40,
+    }),
+    visible: false,
+  })
 
-    map.on('moveend', function () {
-      const center = map.getView().getCenter()
-      const lonLat = toLonLat(center)
-      currentPosition.value = {
-        lng: lonLat[0],
-        lat: lonLat[1],
-      }
-      emit('update:current-position', currentPosition.value)
-    })
+  // Create waypoint sources and layers
+  waypointSource = new VectorSource()
+  waypointLayer = new VectorLayer({
+    source: waypointSource,
+    zIndex: 10
+  })
 
-    // Initial update
-    updateMapFeatures()
+  routeSource = new VectorSource()
+  routeLayer = new VectorLayer({
+    source: routeSource,
+    zIndex: 5
+  })
+
+  // Initialize map
+  map = new Map({
+    target: mapElement.value,
+    layers: [
+      osmLayer,
+      satelliteLayer,
+      hybridLabelsLayer,
+      routeLayer,
+      vectorLayer,
+      waypointLayer
+    ],
+    view: new View({
+      center: fromLonLat([36.9759, 0.0078]), // Ol Pejeta coordinates
+      zoom: 17,
+    }),
+  })
+
+  const center = map.getView().getCenter()
+
+  // Initial positions
+  dronePosition.value = {
+    x: center[0] - 500,
+    y: center[1] - 500,
   }
 
-  // Watch for drone telemetry data changes
-  watch(() => props.droneTelemetryData, (newTelemetry) => {
-    console.log('Drone telemetry data changed:', newTelemetry)
-    if (newTelemetry && dronePositionAvailable.value) {
-      updateDroneFromTelemetry()
-      // Disable manual control when telemetry is active
-      manualControl.value = false
+  vehiclePosition.value = {
+    x: center[0] + 500,
+    y: center[1] + 500,
+  }
+
+  // Create features
+  droneFeature = new Feature({
+    geometry: new Point([dronePosition.value.x, dronePosition.value.y]),
+    type: 'drone',
+  })
+
+  vehicleFeature = new Feature({
+    geometry: new Point([vehiclePosition.value.x, vehiclePosition.value.y]),
+    type: 'car',
+  })
+
+  safetyRadiusFeature = new Feature({
+    geometry: new Circle([dronePosition.value.x, dronePosition.value.y], 200),
+    type: 'safety-radius',
+  })
+
+  distanceLineFeature = new Feature({
+    geometry: new LineString([
+      [dronePosition.value.x, dronePosition.value.y],
+      [vehiclePosition.value.x, vehiclePosition.value.y],
+    ]),
+    type: 'distance-line',
+  })
+
+  const midPoint = [
+    (dronePosition.value.x + vehiclePosition.value.x) / 2,
+    (dronePosition.value.y + vehiclePosition.value.y) / 2,
+  ]
+
+  distanceLabelFeature = new Feature({
+    geometry: new Point(midPoint),
+    type: 'distance-label',
+  })
+
+  vectorSource.addFeatures([
+    droneFeature,
+    vehicleFeature,
+    safetyRadiusFeature,
+    distanceLineFeature,
+    distanceLabelFeature,
+  ])
+
+  // Map interaction handlers
+  let selectedFeature = null
+
+  map.on('pointermove', function (e) {
+    if (selectedFeature && isManualControlEnabled.value) {
+      const coords = e.coordinate
+      if (selectedFeature === droneFeature) {
+        dronePosition.value = { x: coords[0], y: coords[1] }
+        emit('update:drone-position', dronePosition.value)
+      } else if (selectedFeature === vehicleFeature) {
+        vehiclePosition.value = { x: coords[0], y: coords[1] }
+        emit('update:vehicle-position', vehiclePosition.value)
+      }
+      updateMapFeatures()
     }
-  }, { deep: true })
+  })
 
-  // Watch for vehicle telemetry data changes
-  watch(() => props.vehicleTelemetryData, (newTelemetry) => {
-    console.log('Vehicle telemetry data changed:', newTelemetry)
-    if (newTelemetry && vehiclePositionAvailable.value) {
-      updateVehicleFromTelemetry()
-      // Disable manual control when telemetry is active
-      manualControl.value = false
+  map.on('pointerdown', function (e) {
+    if (isManualControlEnabled.value) {
+      map.forEachFeatureAtPixel(e.pixel, function (feature) {
+        if (feature === droneFeature || feature === vehicleFeature) {
+          selectedFeature = feature
+          return true
+        }
+      })
     }
-  }, { deep: true })
 
-  // Updated manual control computed property
-  const isManualControlEnabled = computed(() => {
-    return manualControl.value && !props.isDroneConnected && !props.isVehicleConnected
+    // Set user interaction flag and disable following
+    isUserInteracting = true
+    followVehicle.value = false
+    followDrone.value = false
   })
 
-  // Watch for changes in distance prop
-  watch(() => props.distance, () => {
-    updateMapFeatures()
+  map.on('pointerup', function () {
+    selectedFeature = null
+    // Keep user interaction flag for a short time to prevent immediate re-following
+    setTimeout(() => {
+      isUserInteracting = false
+    }, 1000) // 1 second delay before allowing following again
   })
 
-  // Watch for changes in the following status to redraw the map
-  watch(() => props.isDroneFollowing, () => {
-    if (vectorSource) {
-      vectorSource.changed(); // This forces the style function to re-run
+  // Handle map drag/pan
+  map.on('movestart', function (evt) {
+    // Only disable following if the move was initiated by user interaction
+    if (evt.frameState && evt.frameState.viewHints[0] > 0) { // User is interacting
+      isUserInteracting = true
+      followVehicle.value = false
+      followDrone.value = false
     }
-  });
-
-  onMounted(() => {
-    initMap()
   })
 
-  onUnmounted(() => {
-    // Map instance is automatically cleaned up by OpenLayers
+  map.on('moveend', function (evt) {
+    const center = map.getView().getCenter()
+    const lonLat = toLonLat(center)
+    currentPosition.value = {
+      lng: lonLat[0],
+      lat: lonLat[1],
+    }
+    emit('update:current-position', currentPosition.value)
+
+    // Reset interaction flag after move ends
+    setTimeout(() => {
+      isUserInteracting = false
+    }, 500)
   })
+
+  // Initial update
+  updateMapFeatures()
+}
+
+// Watchers
+watch(() => props.droneTelemetryData, (newTelemetry) => {
+  if (newTelemetry && dronePositionAvailable.value) {
+    updateDroneFromTelemetry()
+    manualControl.value = false
+  }
+}, { deep: true })
+
+watch(() => props.vehicleTelemetryData, (newTelemetry) => {
+  if (newTelemetry && vehiclePositionAvailable.value) {
+    updateVehicleFromTelemetry()
+    manualControl.value = false
+  }
+}, { deep: true })
+
+watch(() => props.distance, () => {
+  updateMapFeatures()
+})
+
+watch(() => props.isDroneFollowing, () => {
+  if (vectorSource) {
+    vectorSource.changed()
+  }
+})
+
+// Watch for waypoint changes from telemetry and update map
+watch(() => props.vehicleWaypoints, (newWaypoints) => {
+  if (newWaypoints && Object.keys(newWaypoints).length > 0) {
+    updateWaypointsOnMap(newWaypoints)
+  } else {
+    clearWaypoints()
+  }
+}, { deep: true })
+
+// Watch for follow vehicle changes to re-enable following
+watch(followVehicle, (newValue) => {
+  if (newValue && vehiclePositionAvailable.value) {
+    // Immediately center on vehicle when following is enabled
+    centerMapOnVehicle([vehiclePosition.value.x, vehiclePosition.value.y])
+  }
+})
+
+// Watch for follow drone changes to re-enable following
+watch(followDrone, (newValue) => {
+  if (newValue && dronePositionAvailable.value) {
+    // Immediately center on drone when following is enabled
+    centerMapOnDrone([dronePosition.value.x, dronePosition.value.y])
+  }
+})
+
+onMounted(() => {
+  initMap()
+})
+
+onUnmounted(() => {
+  if (map) {
+    map.setTarget(null)
+    map = null
+  }
+})
 </script>
 
 <style scoped>
@@ -729,23 +815,5 @@ const vehiclePositionAvailable = computed(() => {
   margin-left: 11px;
   margin-bottom: 10px;
   gap: 8px;
-}
-
-.control-buttons {
-  position: fixed;
-  bottom: 30px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 2000;
-}
-
-.button-container {
-  display: flex;
-  gap: 16px;
-  background-color: rgba(255, 255, 255, 0.95);
-  padding: 16px 24px;
-  border-radius: 30px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
-  backdrop-filter: blur(10px);
 }
 </style>

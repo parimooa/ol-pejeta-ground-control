@@ -98,6 +98,7 @@
           :is-drone-following="isDroneFollowing"
           :is-vehicle-connected="isVehicleConnected"
           :vehicle-telemetry-data="vehicleData"
+          :vehicle-waypoints="vehicleData.mission.mission_waypoints"
           @emergency-stop="emergencyStop"
           @start-mission="startMission"
         />

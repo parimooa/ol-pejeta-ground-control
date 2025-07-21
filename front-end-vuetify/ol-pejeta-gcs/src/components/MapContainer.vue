@@ -166,6 +166,9 @@ let waypointLayer = null
 let routeSource = null
 let routeLayer = null
 
+// Waypoint state
+let hasAutoFittedWaypoints = false
+
 // State variables
 const currentPosition = ref({ lat: 0.0078, lng: 36.9759 })
 const dronePosition = ref({ x: 0, y: 0 })
@@ -384,7 +387,10 @@ const updateWaypointsOnMap = (waypointsObj) => {
   // Convert waypoints object to array and sort by sequence
   const waypointsArray = Object.values(waypointsObj).sort((a, b) => a.seq - b.seq)
 
-  if (waypointsArray.length === 0) return
+  if (waypointsArray.length === 0) {
+    hasAutoFittedWaypoints = false
+    return
+  }
 
   const coordinates = []
 
@@ -431,10 +437,14 @@ const updateWaypointsOnMap = (waypointsObj) => {
 
     routeSource.addFeature(routeFeature)
 
-    // Zoom to fit the waypoints
-    const extent = routeSource.getExtent()
-    if (extent && !ol.isEmpty(extent)) {
-      map.getView().fit(extent, { padding: [50, 50, 50, 50], maxZoom: 16 })
+    // Only auto-fit to waypoints on first load, not on subsequent updates
+    if (!hasAutoFittedWaypoints) {
+      const extent = routeSource.getExtent()
+      if (extent && !ol.isEmpty(extent)) {
+        // Removed maxZoom constraint to allow unlimited zooming
+        map.getView().fit(extent, { padding: [50, 50, 50, 50] })
+        hasAutoFittedWaypoints = true
+      }
     }
   }
 }
@@ -442,6 +452,7 @@ const updateWaypointsOnMap = (waypointsObj) => {
 const clearWaypoints = () => {
   if (waypointSource) waypointSource.clear()
   if (routeSource) routeSource.clear()
+  hasAutoFittedWaypoints = false
 }
 
 // Map initialization

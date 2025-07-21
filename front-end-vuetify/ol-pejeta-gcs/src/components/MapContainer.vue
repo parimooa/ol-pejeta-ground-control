@@ -651,7 +651,7 @@ const updateDroneFromTelemetry = () => {
 
   // Emit position update
   emit('update:drone-position', dronePosition.value)
-  console.log(`Drone position updated from telemetry: ${latitude}, ${longitude}`)
+  // console.log(`Drone position updated from telemetry: ${latitude}, ${longitude}`)
 }
 
 const updateVehicleFromTelemetry = () => {
@@ -684,7 +684,7 @@ const updateVehicleFromTelemetry = () => {
 
   // Emit position update
   emit('update:vehicle-position', vehiclePosition.value)
-  console.log(`Vehicle position updated from telemetry: ${latitude}, ${longitude}, heading: ${heading}`)
+  // console.log(`Vehicle position updated from telemetry: ${latitude}, ${longitude}, heading: ${heading}`)
 }
 
 const updateMapFeatures = () => {
@@ -693,7 +693,7 @@ const updateMapFeatures = () => {
   droneFeature.getGeometry().setCoordinates([dronePosition.value.x, dronePosition.value.y])
   vehicleFeature.getGeometry().setCoordinates([vehiclePosition.value.x, vehiclePosition.value.y])
 
-  safetyRadiusFeature.getGeometry().setCenter([dronePosition.value.x, dronePosition.value.y])
+  safetyRadiusFeature.getGeometry().setCenter([vehiclePosition.value.x, vehiclePosition.value.y])
 
   distanceLineFeature.getGeometry().setCoordinates([
     [dronePosition.value.x, dronePosition.value.y],
@@ -960,7 +960,7 @@ const initMap = () => {
   })
 
   safetyRadiusFeature = new Feature({
-    geometry: new Circle([dronePosition.value.x, dronePosition.value.y], 200),
+    geometry: new Circle([vehiclePosition.value.x, vehiclePosition.value.y], 500),
     type: 'safety-radius',
   })
 

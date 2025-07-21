@@ -11,8 +11,8 @@ scan_abandoned = False
 
 # Lawnmower Pattern Configuration
 SWATH_WIDTH = 5  # Spacing between scan lines in meters
-PATTERN_LENGTH = 10  # Length of each lawnmower stripe in meters
-MAX_RADIUS = 10  # The pattern will be a rectangle of PATTERN_LENGTH x (2 * MAX_RADIUS)
+PATTERN_LENGTH = 50  # Length of each lawnmower stripe in meters
+MAX_RADIUS = 100  # The pattern will be a rectangle of PATTERN_LENGTH x (2 * MAX_RADIUS)
 
 
 class SurveyService:
@@ -117,7 +117,7 @@ class SurveyService:
         timeout: int = 320,
         max_car_distance: float = 20,
     ) -> bool:
-        """Generates lawnmower pattern and executes it in AUTO mode with car monitoring."""
+        """Generates a lawnmower pattern and executes it in AUTO mode with car monitoring."""
         self.scan_abandoned = False  # Reset flag at start of scan
 
         # Get drone vehicle

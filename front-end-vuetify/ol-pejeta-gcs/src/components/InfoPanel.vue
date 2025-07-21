@@ -8,31 +8,29 @@
   >
 
     <div class="pa-1">
-      <DistanceStatusCard
-        :distance="distance"
-        :status="status"
-        :status-color="statusColor"
-      />
-
-      <DroneStatusCard
-        :telemetry-data="droneTelemetryData"
-      />
 
       <VehicleStatusCard
         :vehicle-telemetry-data="vehicleTelemetryData"
         :vehicle-location="vehicleLocation"
       />
-
       <SurveyButtonCard
         :survey-button-enabled="surveyButtonEnabled"
         :distance="distance"
         @initiate-survey="$emit('initiate-survey')"
       />
-
+      <DistanceStatusCard
+        :distance="distance"
+        :status="status"
+        :status-color="statusColor"
+      />
       <OperatorInstructionsCard
         :instruction-card="instructionCard"
         :instructions="instructions"
       />
+      <DroneStatusCard
+        :telemetry-data="droneTelemetryData"
+      />
+
 
       <MissionProgressCard
         :mission-steps="missionSteps"
@@ -59,14 +57,14 @@ const props = defineProps({
     type: Object,
     required: true,
   },
-  distance: { type: Number, required: true },
-  status: { type: String, required: true },
-  statusColor: { type: Object, required: true },
-  vehicleLocation: { type: String, required: true },
-  instructions: { type: String, required: true },
-  instructionCard: { type: Object, required: true },
-  missionSteps: { type: Array, required: true },
-  surveyButtonEnabled: { type: Boolean, default: false },
+  distance: {type: Number, required: true},
+  status: {type: String, required: true},
+  statusColor: {type: Object, required: true},
+  vehicleLocation: {type: String, required: true},
+  instructions: {type: String, required: true},
+  instructionCard: {type: Object, required: true},
+  missionSteps: {type: Array, required: true},
+  surveyButtonEnabled: {type: Boolean, default: false},
 })
 </script>
 

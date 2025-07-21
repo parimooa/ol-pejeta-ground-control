@@ -204,6 +204,15 @@ class Vehicle:
             stream_rate_hz,
             1,  # Start stream
         )
+        
+        # Request extended status to get mission current info
+        self.vehicle.mav.request_data_stream_send(
+            self.vehicle.target_system,
+            self.vehicle.target_component,
+            mavutil.mavlink.MAV_DATA_STREAM_EXTENDED_STATUS,
+            2,  # 2 Hz rate for mission status
+            1,  # Start stream
+        )
 
         while not self._stop_threads.is_set():
             if not self.vehicle:
@@ -361,7 +370,7 @@ class Vehicle:
     def follow_target(self, lat: float, lon: float, alt: float):
         """
         Sends a FOLLOW_TARGET MAVLink message to the vehicle.
-        The vehicle must be in a mode that supports following (e.g., Follow mode).
+        The vehicle must be in a guided mode for this to work.
         """
         if not self.vehicle:
             print("Vehicle not connected. Cannot send follow target.")
@@ -386,7 +395,7 @@ class Vehicle:
         )
 
     def arm(self) -> bool:
-        """Arms the vehicle."""
+        """Arms the vehicle. Ensures vehicle is in GUIDED mode before arming."""
         if not self.vehicle:
             print("Vehicle not connected. Cannot arm.")
             return False
@@ -395,6 +404,17 @@ class Vehicle:
             if self.last_telemetry.get("armed"):
                 print("Vehicle is already armed.")
                 return True
+
+            # Check if vehicle is in GUIDED mode
+            current_mode = self.last_telemetry.get("custom_mode")
+
+        # If not in GUIDED mode, switch to GUIDED mode first
+        if current_mode != FlightMode.GUIDED.value:
+            print("Vehicle is not in GUIDED mode. Setting to GUIDED mode before arming...")
+            if not self.set_mode(FlightMode.GUIDED):
+                print("Failed to set GUIDED mode. Cannot proceed with arming.")
+                return False
+            print("Successfully set to GUIDED mode.")
 
         print("Sending ARM command...")
         self.vehicle.mav.command_long_send(
@@ -422,7 +442,6 @@ class Vehicle:
 
         print("Failed to confirm vehicle arming within timeout.")
         return False
-
     def disarm(self) -> bool:
         """Disarms the vehicle."""
         if not self.vehicle:
@@ -695,11 +714,47 @@ class Vehicle:
 
             # Check for waypoint visits when position updates
             self._check_waypoint_visits()
+            
+            # Debug car mission progress
+            if self.vehicle_type == "car" and self.mission_waypoints:
+                current_pos = {"lat": current_lat, "lon": current_lon}
+                closest_distance = float('inf')
+                closest_wp = None
+                for wp_seq, wp in self.mission_waypoints.items():
+                    dist = self._calculate_distance(current_lat, current_lon, wp["lat"], wp["lon"])
+                    if dist < closest_distance:
+                        closest_distance = dist
+                        closest_wp = wp_seq
+                # Only log occasionally to avoid spam
+                if hasattr(self, '_last_debug_time'):
+                    if time.time() - self._last_debug_time > 5:  # Every 5 seconds
+                        print(f"Car position debug: closest_wp={closest_wp}, distance={closest_distance:.1f}m, current_wp={self.current_waypoint_seq}, visited={list(self.visited_waypoints)}")
+                        self._last_debug_time = time.time()
+                else:
+                    self._last_debug_time = time.time()
 
         elif msg_type == "SYS_STATUS":
             self.last_telemetry["battery_voltage"] = msg.voltage_battery / 1000.0
             self.last_telemetry["battery_remaining_percentage"] = msg.battery_remaining
 
+        elif msg_type == "MISSION_CURRENT":
+            # Update current waypoint sequence from autopilot
+            print(f"MISSION_CURRENT received: seq={msg.seq}")
+            self.current_waypoint_seq = msg.seq
+            self.last_telemetry["current_mission_wp_seq"] = msg.seq
+
+            # Update next waypoint based on current
+            if self.mission_waypoints:
+                sorted_waypoints = sorted(self.mission_waypoints.keys())
+                next_wp = None
+                for wp_seq in sorted_waypoints:
+                    if wp_seq > msg.seq:
+                        next_wp = wp_seq
+                        break
+                self.next_waypoint_seq = next_wp
+                self.last_telemetry["next_mission_wp_seq"] = next_wp
+                print(f"Mission status updated: current={msg.seq}, next={next_wp}")
+                
         elif msg_type == "NAV_CONTROLLER_OUTPUT":
             self.last_telemetry["distance_to_mission_wp"] = msg.wp_dist
         elif msg_type == "VFR_HUD":
@@ -850,7 +905,7 @@ class Vehicle:
                 ):
                     self.visited_waypoints.add(wp_seq)
                     self._update_current_next_waypoints()
-                    print(f"Waypoint {wp_seq} visited! Distance: {distance:.2f}m")
+                    print(f"🎯 Waypoint {wp_seq} visited! Distance: {distance:.2f}m, Current: {self.current_waypoint_seq}, Next: {self.next_waypoint_seq}")
                     del self._waypoint_visit_candidates[wp_seq]
             else:
                 if (

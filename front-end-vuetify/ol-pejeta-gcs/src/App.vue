@@ -208,7 +208,6 @@ const vehicleData = reactive({
 
 // Another app state
 const distance = ref(0)
-const missionActive = ref(false)
 const showSnackbar = ref(false)
 const snackbarMessage = ref('')
 const snackbarColor = ref('success')
@@ -253,58 +252,196 @@ const missionSteps = ref([
   { text: 'Return to base', status: 'pending' },
 ])
 
-// Function to fetch next waypoint information
-const fetchNextWaypointInfo = async () => {
-  if (!isVehicleConnected.value) return
+// Helper functions for navigation instructions
+const calculateBearing = (lat1, lon1, lat2, lon2) => {
+  const dLon = (lon2 - lon1) * Math.PI / 180
+  const lat1Rad = lat1 * Math.PI / 180
+  const lat2Rad = lat2 * Math.PI / 180
 
-  try {
-    const response = await fetch('http://localhost:8000/survey/waypoint/next?vehicle_type=car')
+  const y = Math.sin(dLon) * Math.cos(lat2Rad)
+  const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon)
 
-    if (!response.ok) {
-      console.error('Failed to fetch next waypoint info:', response.statusText)
-      return
-    }
+  const bearing = Math.atan2(y, x) * 180 / Math.PI
+  return (bearing + 360) % 360
+}
 
-    const data = await response.json()
-    nextWaypointInfo.value = data
+const bearingToCompass = (bearing) => {
+  const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']
+  const index = Math.round(bearing / 22.5) % 16
+  return directions[index]
+}
 
-    // Update instructions with direction to next waypoint
-    if (nextWaypointInfo.value) {
-      if (waypointReached.value) {
-        instructions.value = `You have reached waypoint ${nextWaypointInfo.value.waypoint_number}. Survey is available at this location.`
-      } else {
-        // Get current vehicle heading
-        const currentHeading = vehicleData.velocity.heading
-        const targetBearing = nextWaypointInfo.value.bearing
+const bearingToDirection = (bearing) => {
+  const directions = [
+    'North', 'North-Northeast', 'Northeast', 'East-Northeast',
+    'East', 'East-Southeast', 'Southeast', 'South-Southeast',
+    'South', 'South-Southwest', 'Southwest', 'West-Southwest',
+    'West', 'West-Northwest', 'Northwest', 'North-Northwest'
+  ]
+  const index = Math.round(bearing / 22.5) % 16
+  return directions[index]
+}
 
-        // Calculate the relative angle between current heading and target bearing
-        let relativeAngle = targetBearing - currentHeading
-        // Normalize to -180 to 180 degrees
-        if (relativeAngle > 180) relativeAngle -= 360
-        if (relativeAngle < -180) relativeAngle += 360
+const getRelativeDirection = (currentHeading, targetBearing) => {
+  let relativeAngle = targetBearing - currentHeading
+  if (relativeAngle > 180) relativeAngle -= 360
+  if (relativeAngle < -180) relativeAngle += 360
+  return relativeAngle
+}
 
-        // Determine turn direction
-        let turnDirection = ''
-        if (Math.abs(relativeAngle) < 15) {
-          turnDirection = 'Continue straight'
-        } else if (relativeAngle > 0) {
-          turnDirection = `Turn right (${Math.abs(Math.round(relativeAngle))}°)`
-        } else {
-          turnDirection = `Turn left (${Math.abs(Math.round(relativeAngle))}°)`
+const getDroneOperationalContext = () => {
+  const droneStatus = droneData.heartbeat
+  if (!droneStatus) return 'unknown'
+
+  const { armed, custom_mode, system_status } = droneStatus
+  const groundSpeed = droneData.velocity.ground_speed || 0
+
+  if (!armed) return 'idle'
+  if (armed && custom_mode === 3 && groundSpeed > 1) return 'mission_active' // AUTO mode with movement
+  if (armed && custom_mode === 4) return 'guided' // GUIDED mode
+  if (armed && system_status === 3) return 'armed_ready'
+
+  return 'active'
+}
+
+// Enhanced function to update operator instructions based on car/vehicle telemetry
+const updateOperatorInstructions = () => {
+  const droneContext = getDroneOperationalContext()
+  const vehicleHeading = vehicleData.velocity.heading
+  const vehicleSpeed = vehicleData.velocity.ground_speed || 0
+  const vehiclePos = vehicleData.position
+
+  // Get mission data from vehicle telemetry
+  const missionData = vehicleData.mission
+  const currentWaypoint = missionData.current_wp_seq || 0
+  const totalWaypoints = missionData.total_waypoints || 0
+  const missionWaypoints = missionData.mission_waypoints || {}
+
+  // Default instruction
+  let instruction = 'Standby for mission instructions.'
+
+  // Priority 1: Waypoint navigation using telemetry mission data
+  if (totalWaypoints > 0 && missionWaypoints && Object.keys(missionWaypoints).length > 0) {
+    // Find the target waypoint (current or next unvisited)
+    let targetWaypointSeq = currentWaypoint
+    const visitedWaypoints = missionData.visited_waypoints || []
+
+    // If current waypoint is already visited, find next unvisited
+    if (visitedWaypoints.includes(currentWaypoint)) {
+      const sortedWaypoints = Object.keys(missionWaypoints).map(Number).sort((a, b) => a - b)
+      for (const seq of sortedWaypoints) {
+        if (!visitedWaypoints.includes(seq)) {
+          targetWaypointSeq = seq
+          break
         }
-
-        instructions.value = `${turnDirection} to head ${nextWaypointInfo.value.direction} for ${Math.round(nextWaypointInfo.value.distance)}m to reach waypoint ${nextWaypointInfo.value.waypoint_number} of ${nextWaypointInfo.value.total_waypoints}.`
-
-        // Log the instructions for debugging
-        console.log('Updated operator instructions:', instructions.value)
       }
     }
 
-    console.log('Next waypoint info:', nextWaypointInfo.value)
-  } catch (error) {
-    console.error('Error fetching next waypoint info:', error)
+    const targetWaypoint = missionWaypoints[targetWaypointSeq]
+
+    if (targetWaypoint && vehiclePos.latitude && vehiclePos.longitude) {
+      // Calculate distance and bearing to target waypoint
+      const wpDistance = calculateDistance(
+        vehiclePos.latitude, vehiclePos.longitude,
+        targetWaypoint.lat, targetWaypoint.lon
+      )
+
+      const bearing = calculateBearing(
+        vehiclePos.latitude, vehiclePos.longitude,
+        targetWaypoint.lat, targetWaypoint.lon
+      )
+
+      const waypointNumber = targetWaypointSeq + 1 // Display as 1-indexed
+
+      if (wpDistance <= 5) {
+        instruction = `🎯 WAYPOINT REACHED: You've arrived at waypoint ${waypointNumber}/${totalWaypoints}. Survey operation available here.`
+        waypointReached.value = true
+      } else {
+        waypointReached.value = false
+        const targetDirection = bearingToDirection(bearing)
+        const compassDirection = bearingToCompass(bearing)
+
+        // Calculate turn instructions based on VEHICLE heading
+        if (vehicleHeading !== null && vehicleHeading !== undefined) {
+          const relativeAngle = getRelativeDirection(vehicleHeading, bearing)
+
+          let turnInstruction = ''
+          if (Math.abs(relativeAngle) < 15) {
+            turnInstruction = '➡️ Continue straight'
+          } else if (relativeAngle > 0) {
+            if (relativeAngle > 45) {
+              turnInstruction = `🔄 Turn sharp right (${Math.round(relativeAngle)}°)`
+            } else {
+              turnInstruction = `↗️ Turn right (${Math.round(relativeAngle)}°)`
+            }
+          } else {
+            if (relativeAngle < -45) {
+              turnInstruction = `🔄 Turn sharp left (${Math.abs(Math.round(relativeAngle))}°)`
+            } else {
+              turnInstruction = `↖️ Turn left (${Math.abs(Math.round(relativeAngle))}°)`
+            }
+          }
+
+          // Speed guidance
+          let speedGuidance = ''
+          if (vehicleSpeed > 5) {
+            speedGuidance = ' - SLOW DOWN'
+          } else if (vehicleSpeed < 0.5) {
+            speedGuidance = ' - START MOVING'
+          }
+
+          instruction = `${turnInstruction} to head ${compassDirection} for ${Math.round(wpDistance)}m to waypoint ${waypointNumber}/${totalWaypoints}${speedGuidance}.`
+        } else {
+          instruction = `🧭 Drive ${compassDirection} (${targetDirection.toLowerCase()}) for ${Math.round(wpDistance)}m to reach waypoint ${waypointNumber}/${totalWaypoints}.`
+        }
+      }
+    }
   }
+
+  // Priority 2: Drone coordination context (modifies basic navigation)
+  if (droneContext === 'mission_active') {
+    if (isCoordinationActive.value) {
+      if (distance.value > 400) {
+        instruction = '⚠️ MOVE TOWARDS DRONE: Drive closer to drone position for coordination. Check drone location on map.'
+      } else if (vehicleSpeed > 2 && waypointReached.value === false) {
+        instruction = '🛑 SLOW DOWN: Approaching waypoint. Drone may start survey here. Reduce speed.'
+      } else if (waypointReached.value) {
+        instruction = '✅ MAINTAIN POSITION: You are at the survey waypoint. Keep vehicle stationary while drone surveys.'
+      }
+    } else {
+      // Drone active but no coordination - still provide waypoint guidance
+      if (totalWaypoints > 0 && !waypointReached.value) {
+        // Keep existing waypoint instruction but add drone context
+        instruction += ' (Drone is active but not coordinated)'
+      } else {
+        instruction = '🚁 Drone is executing mission independently. Continue to next waypoint or standby.'
+      }
+    }
+  }
+
+  // Priority 3: Safety overrides (highest priority)
+  if (distance.value > 500) {
+    instruction = '🚨 DANGER: Drone is too far away! Drive towards drone position immediately or stop operations.'
+  } else if (distance.value > 490) {
+    instruction = '⚠️ WARNING: Approaching maximum safe distance from drone. Check drone position and move closer if needed.'
+  }
+
+  // Add vehicle status context
+  if (vehicleSpeed > 10) {
+    instruction += ' ⚠️ SPEED WARNING: Reduce speed for safety.'
+  }
+
+  instructions.value = instruction
+  // console.log('Updated operator instructions (vehicle-focused):', {
+  //   instruction,
+  //   currentWP: currentWaypoint,
+  //   totalWPs: totalWaypoints,
+  //   visitedWPs: missionData.visited_waypoints || [],
+  //   waypointReached: waypointReached.value
+  // })
 }
+
+
 
 // Computed properties
 const status = computed(() => {
@@ -345,9 +482,9 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
   return R * c
 }
-// Watch for changes in drone or vehicle position to update distance
+// Watch for changes in drone or vehicle position to update distance and instructions
 watch(
-  [() => droneData.position, () => vehicleData.position],
+  [() => droneData.position, () => vehicleData.position, () => vehicleData.velocity, () => droneData.heartbeat],
   ([dronePos, vehiclePos]) => {
     if (
       dronePos &&
@@ -364,6 +501,9 @@ watch(
         vehiclePos.longitude,
       )
       distance.value = Math.round(newDistance)
+
+      // Update instructions when position, velocity, or drone status changes
+      updateOperatorInstructions()
     }
   },
   { deep: true },
@@ -558,88 +698,6 @@ const disconnectWebSocket = vehicleType => {
     wsConnections[vehicleType].close(1000, `Disconnecting ${vehicleType} by user action`)
   }
 }
-  // const startMission = async vehicleType => {
-  //   console.log('Connecting to '+vehicleType)
-  //   try {
-  //     const response = await fetch(`http://localhost:8000/vehicles/${vehicleType}/connect`, {
-  //       method: 'POST',
-  //       headers: {
-  //         'Accept': 'application/json',
-  //         'Content-Type': 'application/json',
-  //       },
-  //     })
-  //
-  //     const data = await response.json()
-  //
-  //     if (!response.ok) {
-  //       throw new Error(data.detail || `Failed to connect to ${vehicleType}`)
-  //     }
-  //
-  //     // Update initial telemetry data from the connected response for the specific vehicle
-  //     if (vehicleType === 'drone') {
-  //       if (data.position) Object.assign(droneData.position, data.position)
-  //       if (data.velocity) Object.assign(droneData.velocity, data.velocity)
-  //       if (data.battery) Object.assign(droneData.battery, data.battery)
-  //       if (data.mission) Object.assign(droneData.mission, data.mission)
-  //       if (data.heartbeat) Object.assign(droneData.heartbeat, data.heartbeat)
-  //     } else if (vehicleType === 'car') {
-  //       if (data.position) Object.assign(vehicleData.position, data.position)
-  //       if (data.velocity) Object.assign(vehicleData.velocity, data.velocity)
-  //       if (data.battery) Object.assign(vehicleData.battery, data.battery)
-  //       if (data.mission) Object.assign(vehicleData.mission, data.mission)
-  //       if (data.heartbeat) Object.assign(vehicleData.heartbeat, data.heartbeat)
-  //     }
-  //
-  //     snackbarMessage.value = `${vehicleType.charAt(0).toUpperCase() + vehicleType.slice(1)} connected successfully`
-  //     snackbarColor.value = 'success'
-  //     showSnackbar.value = true
-  //
-  //     // Connect to the WebSocket for telemetry
-  //     connectWebSocket(vehicleType)
-  //
-  //   } catch (error) {
-  //     console.error(`Error connecting to ${vehicleType}:`, error)
-  //     if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-  //       snackbarMessage.value = 'Connection Refused: Check if the server is running.'
-  //     } else {
-  //       snackbarMessage.value = `Error connecting to ${vehicleType}: ${error.message}`
-  //     }
-  //     snackbarColor.value = 'error'
-  //     showSnackbar.value = true
-  //   }
-  // }
-  // const emergencyStop = async () => {
-  //   try {
-  //     const response = await fetch('http://localhost:8000/vehicles/drone/disconnect', {
-  //       method: 'POST',
-  //       headers: {
-  //         'Accept': 'application/json',
-  //         'Content-Type': 'application/json',
-  //       },
-  //     })
-  //
-  //     const data = await response.json()
-  //
-  //     if (!response.ok) {
-  //       throw new Error(data.detail || 'Failed to disconnect drone')
-  //     }
-  //
-  //     missionActive.value = false
-  //     snackbarMessage.value = 'Disconnected successfully'
-  //     snackbarColor.value = 'info'
-  //     showSnackbar.value = true
-  //
-  //     disconnectWebSocket()
-  //
-  //   } catch (error) {
-  //     console.error('Error executing emergency stop:', error)
-  //     snackbarMessage.value = `Error executing emergency stop: ${error.message}`
-  //     snackbarColor.value = 'error'
-  //     showSnackbar.value = true
-  //     missionActive.value = false
-  //     disconnectWebSocket()
-  //   }
-  // }
 const connectVehicle = async vehicleType => {
   console.log(`Connecting to ${vehicleType}...`)
   try {

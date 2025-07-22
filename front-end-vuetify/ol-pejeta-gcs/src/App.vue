@@ -101,7 +101,7 @@
           :vehicle-waypoints="vehicleData.mission.mission_waypoints"
           :drone-mission-waypoints="currentMissionWaypoints"
           :survey-complete="isSurveyComplete"
-
+          :is-drone-surveying="isDroneSurveying"
         />
       </div>
     </v-main>
@@ -156,6 +156,7 @@ const droneData = reactive({
     distance_to_wp: 0,
     progress_percentage: 0,
     total_waypoints: 0,
+    mission_waypoints: {},
   },
   heartbeat: {
     timestamp: null,
@@ -240,14 +241,38 @@ const surveyState = reactive({
 // Add computed property for survey completion
 const isSurveyComplete = computed(() => surveyState.isComplete)
 
+// Add computed property for drone surveying state
+const isDroneSurveying = computed(() => {
+  const droneStatus = droneData.heartbeat
+  if (!droneStatus) {
+      return false
+  }
+  
+  const { armed, custom_mode } = droneStatus
+  const groundSpeed = droneData.velocity.ground_speed || 0
+  const hasWaypoints = Object.keys(droneData.mission.mission_waypoints || {}).length > 0
+  const waypointCount = Object.keys(droneData.mission.mission_waypoints || {}).length
+  
+  const inAutoMode = custom_mode === 3
+  const isMovingWithWaypoints = hasWaypoints && groundSpeed > 0.1
+  
+  
+  // More flexible detection: drone is surveying if moving with waypoints and either:
+  // 1. In AUTO mode, OR 2. Coordination is active
+  return armed && isMovingWithWaypoints && (inAutoMode || isCoordinationActive.value)
+})
+
 // Get current mission waypoints from drone telemetry
 const currentMissionWaypoints = computed(() => {
   const waypoints = droneData.mission.mission_waypoints || {}
-  return Object.values(waypoints).map(wp => ({
+  const mappedWaypoints = Object.values(waypoints).map(wp => ({
     lat: wp.lat,
     lon: wp.lon,
     seq: wp.seq
   }))
+  
+  
+  return mappedWaypoints
 })
 
 // Vehicle info derived from telemetry data
@@ -653,6 +678,16 @@ const connectWebSocket = vehicleType => {
               snackbarMessage.value = 'Survey mission completed successfully! 🎉'
               snackbarColor.value = 'success'
               showSnackbar.value = true
+              
+              // Clear mission waypoints after survey completion with a small delay
+              setTimeout(() => {
+                console.log('Clearing mission waypoints after survey completion')
+                droneData.mission.mission_waypoints = {}
+                droneData.mission.total_waypoints = 0
+                droneData.mission.current_wp_seq = 0
+                droneData.mission.next_wp_seq = 0
+                surveyState.isComplete = false // Reset for next survey
+              }, 3000) // 3 second delay to allow map to save the completed area
               break
           }
           return; // Stop processing since this wasn't a telemetry message

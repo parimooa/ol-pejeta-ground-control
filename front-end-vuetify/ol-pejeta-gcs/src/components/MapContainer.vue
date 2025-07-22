@@ -59,25 +59,21 @@
       </div>
 
       <!-- Coordination Controls -->
-      <div class="coordination-controls pa-2">
+   <div class="coordination-controls pa-2">
         <div class="toggle-wrapper">
           <v-btn
-            @click="startCoordination"
-            size="small"
-            color="green"
+            :loading="coordinationLoading"
+            :color="props.isCoordinationActive ? 'red' : 'green'"
             variant="outlined"
-            prepend-icon="mdi-sync"
-          >Coordination On</v-btn>
-          <v-btn
-            @click="stopCoordination"
             size="small"
-            color="red"
-            class="ml-2"
-            variant="outlined"
-            prepend-icon="mdi-sync-off"
-          >Coordination Off</v-btn>
+            :prepend-icon="props.isCoordinationActive ? 'mdi-sync-off' : 'mdi-sync'"
+            @click="toggleCoordination"
+          >
+            {{ props.isCoordinationActive ? 'Coordination Off' : 'Coordination On' }}
+          </v-btn>
         </div>
       </div>
+
 
       <!-- Offline Map Controls -->
       <div class="offline-controls pa-2">
@@ -320,12 +316,11 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import Map from 'ol/Map'
 import View from 'ol/View'
 import TileLayer from 'ol/layer/Tile'
-import OSM from 'ol/source/OSM'
-import XYZ from 'ol/source/XYZ'
 import { fromLonLat, toLonLat } from 'ol/proj'
 import Feature from 'ol/Feature'
 import Point from 'ol/geom/Point'
 import LineString from 'ol/geom/LineString'
+import Polygon from 'ol/geom/Polygon'
 import Circle from 'ol/geom/Circle'
 import { Vector as VectorLayer } from 'ol/layer'
 import { Vector as VectorSource } from 'ol/source'
@@ -379,6 +374,18 @@ const props = defineProps({
   vehicleWaypoints: {
     type: Object,
     default: () => ({})
+  },
+  droneMissionWaypoints: {
+    type: Array,
+    default: () => []
+  },
+  surveyComplete: {
+    type: Boolean,
+    default: false
+  },
+  isDroneSurveying: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -410,6 +417,12 @@ let waypointSource = null
 let waypointLayer = null
 let routeSource = null
 let routeLayer = null
+
+// Survey layers
+let surveyGridSource = null
+let surveyGridLayer = null
+let completedSurveySource = null
+let completedSurveyLayer = null
 
 // Waypoint state
 let hasAutoFittedWaypoints = false
@@ -450,18 +463,14 @@ let isUserInteracting = false
 // Helper computed properties
 const dronePositionAvailable = computed(() => {
   return props.isDroneConnected &&
-    props.droneTelemetryData &&
-    props.droneTelemetryData.position &&
-    props.droneTelemetryData.position.latitude !== null &&
-    props.droneTelemetryData.position.longitude !== null
+    props.droneTelemetryData?.position?.latitude !== null &&
+    props.droneTelemetryData?.position?.longitude !== null
 })
 
 const vehiclePositionAvailable = computed(() => {
   return props.isVehicleConnected &&
-    props.vehicleTelemetryData &&
-    props.vehicleTelemetryData.position &&
-    props.vehicleTelemetryData.position.latitude !== null &&
-    props.vehicleTelemetryData.position.longitude !== null
+    props.vehicleTelemetryData?.position?.latitude !== null &&
+    props.vehicleTelemetryData?.position?.longitude !== null
 })
 
 const isManualControlEnabled = computed(() => {
@@ -469,21 +478,21 @@ const isManualControlEnabled = computed(() => {
 })
 
 // Coordination functions
-const startCoordination = async () => {
+const toggleCoordination = async () => {
+  coordinationLoading.value = true
+  const action = props.isCoordinationActive ? 'stop' : 'start'
   try {
-    await fetch('http://localhost:8000/coordination/start', { method: 'POST' })
-    console.log('Coordination started')
+    const response = await fetch(`http://localhost:8000/coordination/${action}`, { method: 'POST' })
+    if (!response.ok) {
+      const errorData = await response.json()
+      console.error(`Failed to ${action} coordination:`, errorData.detail || response.statusText)
+    } else {
+      console.log(`Coordination ${action} requested successfully.`)
+    }
   } catch (error) {
-    console.error('Failed to start coordination:', error)
-  }
-}
-
-const stopCoordination = async () => {
-  try {
-    await fetch('http://localhost:8000/coordination/stop', { method: 'POST' })
-    console.log('Coordination stopped')
-  } catch (error) {
-    console.error('Failed to stop coordination:', error)
+    console.error(`Error during coordination ${action}:`, error)
+  } finally {
+    coordinationLoading.value = false
   }
 }
 
@@ -501,33 +510,21 @@ const updateOfflineTileCounts = async () => {
       satellite: satelliteCount,
       hybrid: hybridCount
     }
-
-    console.log('Updated offline tile counts:', offlineTileCounts.value)
   } catch (error) {
     console.error('Error counting offline tiles:', error)
   }
 }
 
 const downloadOfflineMapTiles = async (type) => {
-  if (isDownloading.value) {
-    console.warn('A download is already in progress')
-    return
-  }
+  if (isDownloading.value) return
+  isDownloading.value = true
+  downloadingMapType.value = type
+  downloadProgress.value[type] = { current: 0, total: 0, percentage: 0 }
 
   try {
-    isDownloading.value = true
-    downloadingMapType.value = type
-
-    // Reset progress for this map type
-    downloadProgress.value[type] = { current: 0, total: 0, percentage: 0 }
-
-    // Get the current map center
     const view = map.getView()
     const center = toLonLat(view.getCenter())
-
-    console.log(`Starting download of ${type} map tiles for Ol Pejeta...`)
-
-    const result = await downloadMapTiles({
+    await downloadMapTiles({
       mapType: type,
       center: center,
       radius: offlineAreaRadius.value,
@@ -539,10 +536,6 @@ const downloadOfflineMapTiles = async (type) => {
         }
       }
     })
-
-    console.log(`Download complete for ${type} map:`, result)
-
-    // Update tile counts after download
     await updateOfflineTileCounts()
   } catch (error) {
     console.error(`Error downloading ${type} map tiles:`, error)
@@ -555,146 +548,86 @@ const downloadOfflineMapTiles = async (type) => {
 const clearOfflineMapTiles = async (type) => {
   try {
     await clearTiles(type)
-    console.log(`Cleared offline tiles for ${type} map`)
-
-    // Update tile counts after clearing
     await updateOfflineTileCounts()
   } catch (error) {
     console.error(`Error clearing ${type} map tiles:`, error)
   }
 }
 
-const handleOnlineStatus = () => {
-  isDeviceOffline.value = false
-  console.log('Device is online')
-}
-
-const handleOfflineStatus = () => {
-  isDeviceOffline.value = true
-  console.log('Device is offline')
-}
+const handleOnlineStatus = () => isDeviceOffline.value = false
+const handleOfflineStatus = () => isDeviceOffline.value = true
 
 // Map utility functions
 const switchMapType = newType => {
   if (!map) return
-
-  osmLayer.setVisible(false)
-  satelliteLayer.setVisible(false)
-  hybridLabelsLayer.setVisible(false)
-
-  switch (newType) {
-    case 'osm':
-      osmLayer.setVisible(true)
-      break
-    case 'satellite':
-      satelliteLayer.setVisible(true)
-      break
-    case 'hybrid':
-      satelliteLayer.setVisible(true)
-      hybridLabelsLayer.setVisible(true)
-      break
-  }
-
-  console.log(`Map type switched to: ${newType}`)
+  osmLayer.setVisible(newType === 'osm')
+  satelliteLayer.setVisible(newType === 'satellite' || newType === 'hybrid')
+  hybridLabelsLayer.setVisible(newType === 'hybrid')
 }
 
-const gpsToMapCoordinates = (lat, lng) => {
-  return fromLonLat([lng, lat])
-}
+const gpsToMapCoordinates = (lat, lng) => fromLonLat([lng, lat])
 
 // Improved following functions
 const centerMapOnVehicle = (coordinates) => {
   if (!map || !followVehicle.value || isUserInteracting) return
-
   const now = Date.now()
   if (now - lastFollowUpdate < followUpdateThrottle) return
-
   lastFollowUpdate = now
-
-  // Set center directly without animation for smooth following
-  const view = map.getView()
-  view.setCenter(coordinates)
+  map.getView().setCenter(coordinates)
 }
 
 const centerMapOnDrone = (coordinates) => {
   if (!map || !followDrone.value || isUserInteracting) return
-
   const now = Date.now()
   if (now - lastFollowUpdate < followUpdateThrottle) return
-
   lastFollowUpdate = now
-
-  // Set center directly without animation for smooth following
-  const view = map.getView()
-  view.setCenter(coordinates)
+  map.getView().setCenter(coordinates)
 }
 
 // Telemetry update functions
 const updateDroneFromTelemetry = () => {
-  if (!props.isDroneConnected || !dronePositionAvailable.value || !droneFeature) {
-    return
-  }
+  if (!dronePositionAvailable.value || !droneFeature) return
 
   const { latitude, longitude } = props.droneTelemetryData.position
   const mapCoords = gpsToMapCoordinates(latitude, longitude)
-
-  // Update drone position
   dronePosition.value = { x: mapCoords[0], y: mapCoords[1] }
 
-  // Center map on drone if following is enabled
   if (followDrone.value && !isUserInteracting) {
-    centerMapOnDrone([dronePosition.value.x, dronePosition.value.y])
+    centerMapOnDrone(mapCoords)
   }
-
-  // Update map features
   updateMapFeatures()
-
-  // Emit position update
-  emit('update:drone-position', dronePosition.value)
-  // console.log(`Drone position updated from telemetry: ${latitude}, ${longitude}`)
+  emit('update:drone-position', { lat: latitude, lon: longitude })
 }
 
 const updateVehicleFromTelemetry = () => {
-  if (!props.isVehicleConnected || !vehiclePositionAvailable.value || !vehicleFeature) {
-    return
-  }
+  if (!vehiclePositionAvailable.value || !vehicleFeature) return
 
   const { latitude, longitude } = props.vehicleTelemetryData.position
   const heading = props.vehicleTelemetryData.velocity.heading
   const mapCoords = gpsToMapCoordinates(latitude, longitude)
-
-  // Update vehicle position
   vehiclePosition.value = { x: mapCoords[0], y: mapCoords[1] }
+  vehicleFeature.getGeometry().setCoordinates(mapCoords)
 
-  // Update the vehicle feature with new coordinates
-  vehicleFeature.getGeometry().setCoordinates([vehiclePosition.value.x, vehiclePosition.value.y])
-
-  // Set the heading property on the feature for the style function to use
-  if (heading !== undefined) {
-    vehicleFeature.set('heading', heading)
+  if (heading !== undefined && heading !== null) {
+    const style = vehicleFeature.getStyle()
+    const image = style.getImage()
+    // Convert heading (degrees, 0 is North) to rotation in radians
+    const rotation = heading * (Math.PI / 180)
+    image.setRotation(rotation)
   }
 
-  // Center map on vehicle if following is enabled - use the new smooth method
   if (followVehicle.value && !isUserInteracting) {
-    centerMapOnVehicle([vehiclePosition.value.x, vehiclePosition.value.y])
+    centerMapOnVehicle(mapCoords)
   }
-
-  // Update map features
   updateMapFeatures()
-
-  // Emit position update
-  emit('update:vehicle-position', vehiclePosition.value)
-  // console.log(`Vehicle position updated from telemetry: ${latitude}, ${longitude}, heading: ${heading}`)
+  emit('update:vehicle-position', { lat: latitude, lon: longitude })
 }
 
 const updateMapFeatures = () => {
   if (!map || !vectorSource) return
 
   droneFeature.getGeometry().setCoordinates([dronePosition.value.x, dronePosition.value.y])
-  vehicleFeature.getGeometry().setCoordinates([vehiclePosition.value.x, vehiclePosition.value.y])
-
   safetyRadiusFeature.getGeometry().setCenter([vehiclePosition.value.x, vehiclePosition.value.y])
-
   distanceLineFeature.getGeometry().setCoordinates([
     [dronePosition.value.x, dronePosition.value.y],
     [vehiclePosition.value.x, vehiclePosition.value.y],
@@ -705,22 +638,7 @@ const updateMapFeatures = () => {
     (dronePosition.value.y + vehiclePosition.value.y) / 2,
   ]
   distanceLabelFeature.getGeometry().setCoordinates(midPoint)
-
-  // Update distance label
-  distanceLabelFeature.setStyle(new Style({
-    text: new Text({
-      text: props.distance + 'm',
-      fill: new Fill({
-        color: 'white',
-      }),
-      stroke: new Stroke({
-        color: 'rgba(142, 68, 173, 0.8)',
-        width: 5,
-      }),
-      font: '12px sans-serif',
-      padding: [3, 5, 3, 5],
-    }),
-  }))
+  distanceLabelFeature.getStyle().getText().setText(props.distance + 'm')
 
   vectorSource.changed()
 }
@@ -729,31 +647,21 @@ const updateMapFeatures = () => {
 const updateWaypointsOnMap = (waypointsObj) => {
   if (!waypointSource || !routeSource) return
 
-  // Clear existing waypoint features
   waypointSource.clear()
   routeSource.clear()
 
-  // Convert waypoints object to array and sort by sequence
   const waypointsArray = Object.values(waypointsObj).sort((a, b) => a.seq - b.seq)
-
   if (waypointsArray.length === 0) {
     hasAutoFittedWaypoints = false
     return
   }
 
   const coordinates = []
-
   waypointsArray.forEach((waypoint) => {
     const coord = fromLonLat([waypoint.lon, waypoint.lat])
     coordinates.push(coord)
 
-    // Create waypoint marker with number
-    const feature = new Feature({
-      geometry: new Point(coord),
-      waypoint: waypoint
-    })
-
-    // Style with waypoint number
+    const feature = new Feature({ geometry: new Point(coord), waypoint: waypoint })
     feature.setStyle(new Style({
       image: new CircleStyle({
         radius: 15,
@@ -766,32 +674,20 @@ const updateWaypointsOnMap = (waypointsObj) => {
         fill: new Fill({ color: 'white' })
       })
     }))
-
     waypointSource.addFeature(feature)
   })
 
-  // Add route line connecting waypoints
   if (coordinates.length > 1) {
-    const routeFeature = new Feature({
-      geometry: new LineString(coordinates)
-    })
-
+    const routeFeature = new Feature({ geometry: new LineString(coordinates) })
     routeFeature.setStyle(new Style({
-      stroke: new Stroke({
-        color: '#ff6b35',
-        width: 3,
-        lineDash: [5, 5]
-      })
+      stroke: new Stroke({ color: '#ff6b35', width: 3, lineDash: [5, 5] })
     }))
-
     routeSource.addFeature(routeFeature)
 
-    // Only auto-fit to waypoints on first load, not on subsequent updates
     if (!hasAutoFittedWaypoints) {
       const extent = routeSource.getExtent()
       if (extent && !ol.isEmpty(extent)) {
-        // Removed maxZoom constraint to allow unlimited zooming
-        map.getView().fit(extent, { padding: [50, 50, 50, 50] })
+        map.getView().fit(extent, { padding: [50, 50, 50, 50], duration: 500 })
         hasAutoFittedWaypoints = true
       }
     }
@@ -804,82 +700,214 @@ const clearWaypoints = () => {
   hasAutoFittedWaypoints = false
 }
 
+// Survey utility functions
+const generateLawnmowerGrid = (waypoints) => {
+  if (!waypoints || waypoints.length < 3) return []
+
+  const sortedWaypoints = [...waypoints].sort((a, b) => a.seq - b.seq)
+  const coordinates = sortedWaypoints.map(wp => fromLonLat([wp.lon, wp.lat]))
+
+  // Create a simple line string connecting the waypoints in order
+  return [new Feature({ geometry: new LineString(coordinates) })]
+}
+
+const saveSurveyedArea = (waypoints, vehicleId) => {
+  try {
+    const timestamp = Date.now()
+    const surveyId = `survey_${vehicleId || 'unknown'}_${timestamp}`
+
+    const surveyData = {
+      id: surveyId,
+      waypoints: waypoints.map(wp => ({ lat: wp.lat, lon: wp.lon, seq: wp.seq })),
+      vehicleId: vehicleId || 'unknown',
+      completedAt: new Date(timestamp).toISOString()
+    }
+
+    const existingData = JSON.parse(localStorage.getItem('ol_pejeta_surveys') || '{}')
+    existingData[surveyId] = surveyData
+    localStorage.setItem('ol_pejeta_surveys', JSON.stringify(existingData))
+
+  } catch (error) {
+    console.error('Error saving survey area:', error)
+  }
+}
+
+const loadSurveyedAreas = () => {
+  try {
+    const data = JSON.parse(localStorage.getItem('ol_pejeta_surveys') || '{}')
+    return Object.values(data)
+  } catch (error) {
+    console.error('Error loading surveyed areas:', error)
+    return []
+  }
+}
+
+const displaySurveyGrid = (waypoints) => {
+  if (!surveyGridSource) return
+  surveyGridSource.clear()
+
+  if (!waypoints || waypoints.length < 2) return
+
+  const features = generateLawnmowerGrid(waypoints)
+  surveyGridSource.addFeatures(features)
+}
+
+const displayCompletedSurvey = (waypoints) => {
+  if (!completedSurveySource || !waypoints || waypoints.length < 3) return
+
+  // Convert waypoints to map coordinates first
+  const coordinates = waypoints.map(wp => fromLonLat([wp.lon, wp.lat]))
+
+  // Calculate the convex hull to represent the surveyed area as a clean polygon
+  const hullCoordinates = calculateConvexHull(coordinates);
+
+  // A valid polygon needs at least 3 unique points to form an area.
+  if (hullCoordinates.length < 3) {
+      console.warn("Not enough unique points to form a valid survey area polygon.");
+      return;
+  }
+
+  // Close the polygon shape by adding the first point to the end of the array
+  hullCoordinates.push(hullCoordinates[0])
+
+  const surveyPolygon = new Feature({
+    geometry: new Polygon([hullCoordinates]) // Note the double array for Polygon geometry
+  })
+
+  completedSurveySource.addFeature(surveyPolygon)
+}
+
+const loadExistingSurveys = () => {
+  const surveys = loadSurveyedAreas()
+  surveys.forEach(survey => {
+    if (survey.waypoints) {
+      displayCompletedSurvey(survey.waypoints)
+    }
+  })
+}
+
+const calculateConvexHull = (points) => {
+  // Sort points lexicographically (by x, then y) to ensure a consistent order.
+  points.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+
+  const crossProduct = (o, a, b) => {
+    return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  };
+
+  // Build the lower hull
+  const lower = [];
+  for (const p of points) {
+    while (lower.length >= 2 && crossProduct(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) {
+      lower.pop();
+    }
+    lower.push(p);
+  }
+
+  // Build the upper hull
+  const upper = [];
+  for (let i = points.length - 1; i >= 0; i--) {
+    const p = points[i];
+    while (upper.length >= 2 && crossProduct(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) {
+      upper.pop();
+    }
+    upper.push(p);
+  }
+
+  // Combine the hulls and remove the duplicate start/end points.
+  return lower.slice(0, -1).concat(upper.slice(0, -1));
+};
 // Map initialization
-const initMap = () => {
+const initializeFeatures = () => {
+  // Create vector source for all dynamic features
   vectorSource = new VectorSource()
 
-  vectorLayer = new VectorLayer({
-    source: vectorSource,
-    style(feature) {
-      const type = feature.get('type')
-
-      if (type === 'drone') {
-        let color = props.isDroneConnected ? '#2ecc71' : '#3498db'
-        let strokeColor = props.isDroneConnected ? 'rgba(46, 204, 113, 0.5)' : 'rgba(52, 152, 219, 0.5)'
-
-        if (props.isDroneFollowing) {
-          color = '#f39c12'
-          strokeColor = 'rgba(243, 156, 18, 0.7)'
-        }
-
-        return new Style({
-          image: new Icon({
-            src: droneIcon,
-            scale: 0.1,
-            anchor: [0.5, 0.5],
-            anchorXUnits: 'fraction',
-            anchorYUnits: 'fraction',
-          }),
-          stroke: new Stroke({
-            color: strokeColor,
-            width: 3,
-          }),
-          fill: new Fill({
-            color,
-          }),
-        })
-      } else if (type === 'car') {
-        const heading = feature.get('heading') || 0
-        const headingInRadians = (heading * Math.PI) / 180
-        return new Style({
-          image: new Icon({
-            src: vehicleIcon,
-            scale: 0.07,
-            anchor: [0.5, 0.5],
-            anchorXUnits: 'fraction',
-            anchorYUnits: 'fraction',
-            rotateWithView: true,
-            rotation: headingInRadians,
-          }),
-          stroke: new Stroke({
-            color: 'rgba(231, 76, 60, 0.5)',
-            width: 3,
-          }),
-          fill: new Fill({
-            color: '#e74c3c',
-          }),
-        })
-      } else if (type === 'safety-radius') {
-        return new Style({
-          stroke: new Stroke({
-            color: 'rgba(230, 126, 34, 0.7)',
-            width: 2,
-            lineDash: [5, 5],
-          }),
-          fill: new Fill({
-            color: 'rgba(230, 126, 34, 0.1)',
-          }),
-        })
-      } else if (type === 'distance-line') {
-        return new Style({
-          stroke: new Stroke({
-            color: 'rgba(142, 68, 173, 0.7)',
-            width: 2,
-          }),
-        })
-      }
-    },
+  // Create drone feature
+  droneFeature = new Feature({
+    geometry: new Point([0, 0])
   })
+  droneFeature.setStyle(new Style({
+    image: new Icon({
+      src: droneIcon,
+      scale: 0.1,
+      anchor: [0.5, 0.5],
+      anchorXUnits: 'fraction',
+      anchorYUnits: 'fraction',
+    })
+  }))
+
+  // Create vehicle feature
+  vehicleFeature = new Feature({
+    geometry: new Point([0, 0])
+  })
+  vehicleFeature.setStyle(new Style({
+    image: new Icon({
+      src: vehicleIcon,
+      scale: 0.1,
+      anchor: [0.5, 0.5],
+      anchorXUnits: 'fraction',
+      anchorYUnits: 'fraction',
+      rotateWithView: false, // Set to false to control rotation programmatically
+    }),
+    text: new Text({
+      text: 'VEHICLE',
+      font: '12px Arial',
+      fill: new Fill({color: '#000'}),
+      stroke: new Stroke({color: '#fff', width: 2}),
+      offsetY: -35
+    })
+  }))
+
+  // Create safety radius feature
+  safetyRadiusFeature = new Feature({
+    geometry: new Circle([0, 0], 500) // Radius in map units
+  })
+  safetyRadiusFeature.setStyle(new Style({
+    stroke: new Stroke({
+      color: 'rgba(230, 126, 34, 0.7)',
+      width: 2,
+      lineDash: [5, 5],
+    }),
+    fill: new Fill({
+      color: 'rgba(230, 126, 34, 0.1)',
+    }),
+  }))
+
+  // Create distance line feature
+  distanceLineFeature = new Feature({
+    geometry: new LineString([[0, 0], [0, 0]])
+  })
+  distanceLineFeature.setStyle(new Style({
+    stroke: new Stroke({
+      color: 'rgba(142, 68, 173, 0.7)',
+      width: 2,
+    }),
+  }))
+
+  // Create distance label feature
+  distanceLabelFeature = new Feature({
+    geometry: new Point([0, 0])
+  })
+  distanceLabelFeature.setStyle(new Style({
+    text: new Text({
+      text: '0m',
+      fill: new Fill({ color: 'white' }),
+      stroke: new Stroke({ color: 'rgba(142, 68, 173, 0.8)', width: 5 }),
+      font: '12px sans-serif',
+      padding: [3, 5, 3, 5],
+    }),
+  }))
+
+  vectorSource.addFeatures([
+    droneFeature,
+    vehicleFeature,
+    safetyRadiusFeature,
+    distanceLineFeature,
+    distanceLabelFeature,
+  ])
+}
+
+const initMap = () => {
+  initializeFeatures()
 
   // Create base layers with offline capability
   osmLayer = new TileLayer({
@@ -891,7 +919,7 @@ const initMap = () => {
     source: createOfflineXYZSource({
       url: 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
       mapType: 'satellite',
-      maxZoom: 40,
+      maxZoom: 20,
     }),
     visible: false,
   })
@@ -900,9 +928,15 @@ const initMap = () => {
     source: createOfflineXYZSource({
       url: 'https://mt1.google.com/vt/lyrs=h&x={x}&y={y}&z={z}',
       mapType: 'hybrid',
-      maxZoom: 40,
+      maxZoom: 20,
     }),
     visible: false,
+  })
+
+  // Create main vector layer for vehicles and indicators
+  vectorLayer = new VectorLayer({
+    source: vectorSource,
+    zIndex: 15
   })
 
   // Create waypoint sources and layers
@@ -918,6 +952,35 @@ const initMap = () => {
     zIndex: 5
   })
 
+  // Create survey sources and layers
+  surveyGridSource = new VectorSource()
+  surveyGridLayer = new VectorLayer({
+    source: surveyGridSource,
+    style: new Style({
+      stroke: new Stroke({
+        color: '#2196F3',
+        width: 2,
+        lineDash: [10, 5]
+      })
+    }),
+    zIndex: 3
+  })
+
+  completedSurveySource = new VectorSource()
+  completedSurveyLayer = new VectorLayer({
+    source: completedSurveySource,
+    style: new Style({
+      fill: new Fill({
+        color: 'rgba(76, 175, 80, 0.3)'
+      }),
+      stroke: new Stroke({
+        color: '#4CAF50',
+        width: 2
+      })
+    }),
+    zIndex: 2
+  })
+
   // Initialize map
   map = new Map({
     target: mapElement.value,
@@ -925,6 +988,8 @@ const initMap = () => {
       osmLayer,
       satelliteLayer,
       hybridLabelsLayer,
+      completedSurveyLayer,
+      surveyGridLayer,
       routeLayer,
       vectorLayer,
       waypointLayer
@@ -935,189 +1000,101 @@ const initMap = () => {
     }),
   })
 
-  const center = map.getView().getCenter()
-
-  // Initial positions
-  dronePosition.value = {
-    x: center[0] - 500,
-    y: center[1] - 500,
-  }
-
-  vehiclePosition.value = {
-    x: center[0] + 500,
-    y: center[1] + 500,
-  }
-
-  // Create features
-  droneFeature = new Feature({
-    geometry: new Point([dronePosition.value.x, dronePosition.value.y]),
-    type: 'drone',
-  })
-
-  vehicleFeature = new Feature({
-    geometry: new Point([vehiclePosition.value.x, vehiclePosition.value.y]),
-    type: 'car',
-  })
-
-  safetyRadiusFeature = new Feature({
-    geometry: new Circle([vehiclePosition.value.x, vehiclePosition.value.y], 500),
-    type: 'safety-radius',
-  })
-
-  distanceLineFeature = new Feature({
-    geometry: new LineString([
-      [dronePosition.value.x, dronePosition.value.y],
-      [vehiclePosition.value.x, vehiclePosition.value.y],
-    ]),
-    type: 'distance-line',
-  })
-
-  const midPoint = [
-    (dronePosition.value.x + vehiclePosition.value.x) / 2,
-    (dronePosition.value.y + vehiclePosition.value.y) / 2,
-  ]
-
-  distanceLabelFeature = new Feature({
-    geometry: new Point(midPoint),
-    type: 'distance-label',
-  })
-
-  vectorSource.addFeatures([
-    droneFeature,
-    vehicleFeature,
-    safetyRadiusFeature,
-    distanceLineFeature,
-    distanceLabelFeature,
-  ])
-
   // Map interaction handlers
-  let selectedFeature = null
-
-  map.on('pointermove', function (e) {
-    if (selectedFeature && isManualControlEnabled.value) {
-      const coords = e.coordinate
-      if (selectedFeature === droneFeature) {
-        dronePosition.value = { x: coords[0], y: coords[1] }
-        emit('update:drone-position', dronePosition.value)
-      } else if (selectedFeature === vehicleFeature) {
-        vehiclePosition.value = { x: coords[0], y: coords[1] }
-        emit('update:vehicle-position', vehiclePosition.value)
-      }
-      updateMapFeatures()
-    }
-  })
-
-  map.on('pointerdown', function (e) {
-    if (isManualControlEnabled.value) {
-      map.forEachFeatureAtPixel(e.pixel, function (feature) {
-        if (feature === droneFeature || feature === vehicleFeature) {
-          selectedFeature = feature
-          return true
-        }
-      })
-    }
-
-    // Set user interaction flag and disable following
+  map.on('pointerdown', () => {
     isUserInteracting = true
     followVehicle.value = false
     followDrone.value = false
   })
 
-  map.on('pointerup', function () {
-    selectedFeature = null
-    // Keep user interaction flag for a short time to prevent immediate re-following
-    setTimeout(() => {
-      isUserInteracting = false
-    }, 1000) // 1 second delay before allowing following again
+  map.on('pointerup', () => {
+    setTimeout(() => { isUserInteracting = false }, 1000)
   })
 
-  // Handle map drag/pan
-  map.on('movestart', function (evt) {
-    // Only disable following if the move was initiated by user interaction
-    if (evt.frameState && evt.frameState.viewHints[0] > 0) { // User is interacting
+  map.on('movestart', (evt) => {
+    if (evt.frameState && evt.frameState.viewHints[0] > 0) {
       isUserInteracting = true
       followVehicle.value = false
       followDrone.value = false
     }
   })
 
-  map.on('moveend', function (evt) {
-    const center = map.getView().getCenter()
-    const lonLat = toLonLat(center)
-    currentPosition.value = {
-      lng: lonLat[0],
-      lat: lonLat[1],
-    }
-    emit('update:current-position', currentPosition.value)
-
-    // Reset interaction flag after move ends
-    setTimeout(() => {
-      isUserInteracting = false
-    }, 500)
+  map.on('moveend', () => {
+    setTimeout(() => { isUserInteracting = false }, 500)
   })
-
-  // Initial update
-  updateMapFeatures()
 }
 
+
 // Watchers
-watch(() => props.droneTelemetryData, (newTelemetry) => {
-  if (newTelemetry && dronePositionAvailable.value) {
-    updateDroneFromTelemetry()
-    manualControl.value = false
-  }
-}, { deep: true })
-
-watch(() => props.vehicleTelemetryData, (newTelemetry) => {
-  if (newTelemetry && vehiclePositionAvailable.value) {
-    updateVehicleFromTelemetry()
-    manualControl.value = false
-  }
-}, { deep: true })
-
-watch(() => props.distance, () => {
-  updateMapFeatures()
-})
-
-watch(() => props.isDroneFollowing, () => {
-  if (vectorSource) {
-    vectorSource.changed()
-  }
-})
-
-// Watch for waypoint changes from telemetry and update map
-watch(() => props.vehicleWaypoints, (newWaypoints) => {
-  if (newWaypoints && Object.keys(newWaypoints).length > 0) {
-    updateWaypointsOnMap(newWaypoints)
+watch(() => props.droneTelemetryData, updateDroneFromTelemetry, { deep: true })
+watch(() => props.vehicleTelemetryData, updateVehicleFromTelemetry, { deep: true })
+watch(() => props.distance, updateMapFeatures)
+watch(() => props.isDroneFollowing, () => vectorSource?.changed())
+watch(() => props.vehicleWaypoints, (waypoints) => {
+  if (waypoints && Object.keys(waypoints).length > 0) {
+    updateWaypointsOnMap(waypoints)
   } else {
     clearWaypoints()
   }
 }, { deep: true })
 
-// Watch for follow vehicle changes to re-enable following
-watch(followVehicle, (newValue) => {
-  if (newValue && vehiclePositionAvailable.value) {
-    // Immediately center on vehicle when following is enabled
-    centerMapOnVehicle([vehiclePosition.value.x, vehiclePosition.value.y])
+watch(followVehicle, (isFollowing) => {
+  if (isFollowing && vehiclePositionAvailable.value) {
+    centerMapOnVehicle(gpsToMapCoordinates(props.vehicleTelemetryData.position.latitude, props.vehicleTelemetryData.position.longitude))
   }
 })
 
-// Watch for follow drone changes to re-enable following
-watch(followDrone, (newValue) => {
-  if (newValue && dronePositionAvailable.value) {
-    // Immediately center on drone when following is enabled
-    centerMapOnDrone([dronePosition.value.x, dronePosition.value.y])
+watch(followDrone, (isFollowing) => {
+  if (isFollowing && dronePositionAvailable.value) {
+    centerMapOnDrone(gpsToMapCoordinates(props.droneTelemetryData.position.latitude, props.droneTelemetryData.position.longitude))
   }
 })
+
+// WATCHER 1: Handles showing/hiding the blue "planned" grid based on the presence of waypoints.
+watch(() => props.droneMissionWaypoints, (waypoints) => {
+  const hasWaypoints = waypoints && waypoints.length > 2;
+
+  if (hasWaypoints) {
+    // If waypoints exist, it means a survey is planned or active. Display the grid.
+    console.log('Waypoints detected, displaying planned survey grid.');
+    displaySurveyGrid(waypoints);
+  } else {
+    // If waypoints are cleared, the mission is over or reset. Clear the grid.
+    if (surveyGridSource) {
+      console.log('No waypoints detected, clearing planned survey grid.');
+      surveyGridSource.clear();
+    }
+  }
+}, { deep: true, immediate: true });
+
+
+// WATCHER 2: Handles the moment a survey is marked as "complete".
+watch(() => props.surveyComplete, (isComplete, wasComplete) => {
+  // This runs only when surveyComplete transitions from false to true.
+  if (isComplete && !wasComplete && props.droneMissionWaypoints.length > 2) {
+    const waypoints = props.droneMissionWaypoints;
+    const droneId = props.droneTelemetryData?.vehicle_id || 'unknown';
+
+    console.log('Survey complete! Saving area, drawing green polygon, and clearing blue grid.');
+
+    // Save the completed survey data to local storage
+    saveSurveyedArea(waypoints, droneId);
+
+    // Display the final completed area as a green polygon
+    displayCompletedSurvey(waypoints);
+
+    // Explicitly clear the blue "planned" grid, as the survey is now finished.
+    if (surveyGridSource) {
+      surveyGridSource.clear();
+    }
+  }
+});
 
 onMounted(() => {
   initMap()
-
-  // Initialize offline tile counts
   updateOfflineTileCounts()
-
-  // Set up online/offline event listeners
   addConnectivityListeners(handleOnlineStatus, handleOfflineStatus)
+  setTimeout(loadExistingSurveys, 1000)
 })
 
 onUnmounted(() => {
@@ -1125,8 +1102,6 @@ onUnmounted(() => {
     map.setTarget(null)
     map = null
   }
-
-  // Remove online/offline event listeners
   removeConnectivityListeners(handleOnlineStatus, handleOfflineStatus)
 })
 </script>

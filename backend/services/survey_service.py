@@ -10,9 +10,9 @@ from .vehicle_service import vehicle_service
 scan_abandoned = False
 
 # Lawnmower Pattern Configuration
-SWATH_WIDTH = 5  # Spacing between scan lines in meters
-PATTERN_LENGTH = 50  # Length of each lawnmower stripe in meters
-MAX_RADIUS = 100  # The pattern will be a rectangle of PATTERN_LENGTH x (2 * MAX_RADIUS)
+SWATH_WIDTH = 5  #50 Spacing between scan lines in meters
+PATTERN_LENGTH = 40 #1000  # Length of each lawnmower stripe in meters
+MAX_RADIUS = 20#500  # The pattern will be a rectangle of PATTERN_LENGTH x (2 * MAX_RADIUS)
 
 
 class SurveyService:

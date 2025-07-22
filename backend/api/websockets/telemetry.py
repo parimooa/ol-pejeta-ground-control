@@ -87,7 +87,7 @@ class TelemetryWebsocketManager:
                 heartbeat_timestamp = data.get("heartbeat_timestamp")
                 if not heartbeat_timestamp:
                     print(
-                        f"{vehicle_type}: Telemetry callback received data without heartbeat, skipping"
+                        f"{vehicle_type}: No heartbeat received, not sending telemetry"
                     )
                     return
 

@@ -2,11 +2,11 @@
   <v-app>
     <v-app-bar app class="px-4" color="#1a3a5c">
       <div class="text-h6 font-weight-medium">Ol Pejeta GCS</div>
-      <v-spacer />
+      <v-spacer/>
 
       <!-- Drone Status and Controls -->
       <div class="d-flex align-center mr-4">
-        <v-icon :color="isDroneConnected ? 'success' : 'error'" icon="mdi-quadcopter" class="mr-2" />
+        <v-icon :color="isDroneConnected ? 'success' : 'error'" icon="mdi-quadcopter" class="mr-2"/>
         <span class="text-subtitle-2 font-weight-medium" :class="isDroneConnected ? 'text-success' : 'text-error'">
           {{ isDroneConnected ? 'Drone Connected' : 'Drone Disconnected' }}
         </span>
@@ -34,7 +34,7 @@
 
       <!-- Vehicle Status and Controls -->
       <div class="d-flex align-center mr-4">
-        <v-icon :color="isVehicleConnected ? 'success' : 'error'" icon="mdi-car" class="mr-2" />
+        <v-icon :color="isVehicleConnected ? 'success' : 'error'" icon="mdi-car" class="mr-2"/>
         <span class="text-subtitle-2 font-weight-medium" :class="isVehicleConnected ? 'text-success' : 'text-error'">
           {{ isVehicleConnected ? 'Vehicle Connected' : 'Vehicle Disconnected' }}
         </span>
@@ -99,7 +99,10 @@
           :is-vehicle-connected="isVehicleConnected"
           :vehicle-telemetry-data="vehicleData"
           :vehicle-waypoints="vehicleData.mission.mission_waypoints"
-             />
+          :drone-mission-waypoints="currentMissionWaypoints"
+          :survey-complete="isSurveyComplete"
+
+        />
       </div>
     </v-main>
 
@@ -116,95 +119,93 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import {computed, onBeforeUnmount, onMounted, reactive, ref, watch} from 'vue'
 import InfoPanel from './components/InfoPanel.vue'
 import MapContainer from './components/MapContainer.vue'
 
 // Navigation state
 const activeTab = ref(0)
 const navItems = ref([
-  { label: 'Dashboard' },
-  { label: 'History' },
-  { label: 'Settings' },
+  {label: 'Dashboard'},
+  {label: 'History'},
+  {label: 'Settings'},
 ])
-
 
 // Reactive telemetry data object matching your API structure
 const droneData = reactive({
-    position: {
-      latitude: null,
-      longitude: null,
-      altitude_msl: 0,
-      relative_altitude: 0,
-    },
-    velocity: {
-      vx: 0,
-      vy: 0,
-      vz: 0,
-      ground_speed: 0,
-      heading: 0,
-    },
-    battery: {
-      voltage: 0,
-      remaining_percentage: 100,
-    },
-    mission: {
-      current_wp_seq: 0,
-      next_wp_seq: 1,
-      distance_to_wp: 0,
-      progress_percentage: 0,
-      total_waypoints: 0,
-    },
-    heartbeat: {
-      timestamp: null,
-      flight_mode: null,
-      system_status: null,
-      armed: null,
-      guided_enabled: null,
-      custom_mode: null,
-      mavlink_version: null,
-    },
-    vehicle_id: null,
-  })
-
+  position: {
+    latitude: null,
+    longitude: null,
+    altitude_msl: 0,
+    relative_altitude: 0,
+  },
+  velocity: {
+    vx: 0,
+    vy: 0,
+    vz: 0,
+    ground_speed: 0,
+    heading: 0,
+  },
+  battery: {
+    voltage: 0,
+    remaining_percentage: 100,
+  },
+  mission: {
+    current_wp_seq: 0,
+    next_wp_seq: 1,
+    distance_to_wp: 0,
+    progress_percentage: 0,
+    total_waypoints: 0,
+  },
+  heartbeat: {
+    timestamp: null,
+    flight_mode: null,
+    system_status: null,
+    armed: null,
+    guided_enabled: null,
+    custom_mode: null,
+    mavlink_version: null,
+  },
+  vehicle_id: null,
+})
 const vehicleData = reactive({
-    position: {
-      latitude: null,
-      longitude: null,
-      altitude_msl: 0,
-      relative_altitude: 0,
-    },
-    velocity: {
-      vx: 0,
-      vy: 0,
-      vz: 0,
-      ground_speed: 0,
-      heading: 0,
-    },
-    battery: {
-      voltage: 0,
-      remaining_percentage: 100,
-    },
-    mission: {
-      current_wp_seq: 0,
-      next_wp_seq: 1,
-      distance_to_wp: 0,
-      progress_percentage: 0,
-      total_waypoints: 0,
-      mission_waypoints: {}, // <-- Add this
-      visited_waypoints: [],   // <-- Add this
-    },
-    heartbeat: {
-      timestamp: null,
-      flight_mode: null,
-      system_status: null,
-      armed: null,
-      guided_enabled: null,
-      custom_mode: null,
-      mavlink_version: null,
-    },
-    vehicle_id: null,
-  })
+  position: {
+    latitude: null,
+    longitude: null,
+    altitude_msl: 0,
+    relative_altitude: 0,
+  },
+  velocity: {
+    vx: 0,
+    vy: 0,
+    vz: 0,
+    ground_speed: 0,
+    heading: 0,
+  },
+  battery: {
+    voltage: 0,
+    remaining_percentage: 100,
+  },
+  mission: {
+    current_wp_seq: 0,
+    next_wp_seq: 1,
+    distance_to_wp: 0,
+    progress_percentage: 0,
+    total_waypoints: 0,
+    mission_waypoints: {}, // <-- Add this
+    visited_waypoints: [],   // <-- Add this
+  },
+  heartbeat: {
+    timestamp: null,
+    flight_mode: null,
+    system_status: null,
+    armed: null,
+    guided_enabled: null,
+    custom_mode: null,
+    mavlink_version: null,
+  },
+  vehicle_id: null,
+})
 
 // Another app state
 const distance = ref(0)
@@ -231,6 +232,23 @@ let connectionCheckInterval = null
 const isCoordinationActive = ref(false)
 const isDroneFollowing = ref(false)
 const surveyButtonEnabled = ref(false)
+const surveyState = reactive({
+  isComplete: false,
+  completedWaypoints: []
+})
+
+// Add computed property for survey completion
+const isSurveyComplete = computed(() => surveyState.isComplete)
+
+// Get current mission waypoints from drone telemetry
+const currentMissionWaypoints = computed(() => {
+  const waypoints = droneData.mission.mission_waypoints || {}
+  return Object.values(waypoints).map(wp => ({
+    lat: wp.lat,
+    lon: wp.lon,
+    seq: wp.seq
+  }))
+})
 
 // Vehicle info derived from telemetry data
 const vehicleSpeed = computed(() => {
@@ -246,10 +264,10 @@ const vehicleLocation = ref('Site Ol Pejeta')
 // Instructions and mission steps
 const instructions = ref('Vehicle position is currently safe. Maintain current position during drone operation.')
 const missionSteps = ref([
-  { text: 'Drone take-off', status: 'completed' },
-  { text: 'Field scanning', status: 'current', progress: 45 },
-  { text: 'Data collection at points A, B, C', status: 'pending' },
-  { text: 'Return to base', status: 'pending' },
+  {text: 'Drone take-off', status: 'completed'},
+  {text: 'Field scanning', status: 'current', progress: 45},
+  {text: 'Data collection at points A, B, C', status: 'pending'},
+  {text: 'Return to base', status: 'pending'},
 ])
 
 // Helper functions for navigation instructions
@@ -293,7 +311,7 @@ const getDroneOperationalContext = () => {
   const droneStatus = droneData.heartbeat
   if (!droneStatus) return 'unknown'
 
-  const { armed, custom_mode, system_status } = droneStatus
+  const {armed, custom_mode, system_status} = droneStatus
   const groundSpeed = droneData.velocity.ground_speed || 0
 
   if (!armed) return 'idle'
@@ -441,7 +459,34 @@ const updateOperatorInstructions = () => {
   // })
 }
 
+const armCarOnConnect = async () => {
+  console.log('WebSocket for car is open. Sending arm command...')
+  try {
+    const response = await fetch('http://localhost:8000/vehicles/car/arm', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+    })
 
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to send arm command')
+    }
+
+    snackbarMessage.value = 'Car arm command sent successfully.'
+    snackbarColor.value = 'info'
+    showSnackbar.value = true
+
+  } catch (error) {
+    console.error('Error sending arm command to car on connect:', error)
+    snackbarMessage.value = `Arming Failed: ${error.message}`
+    snackbarColor.value = 'error'
+    showSnackbar.value = true
+  }
+}
 
 // Computed properties
 const status = computed(() => {
@@ -452,18 +497,18 @@ const status = computed(() => {
 const statusColor = computed(() => {
   switch (status.value) {
     case 'DANGER':
-      return { dot: 'bg-error', text: 'text-error', bg: 'bg-error-subtle' }
+      return {dot: 'bg-error', text: 'text-error', bg: 'bg-error-subtle'}
     case 'WARNING':
-      return { dot: 'bg-warning', text: 'text-warning', bg: 'bg-warning-subtle' }
+      return {dot: 'bg-warning', text: 'text-warning', bg: 'bg-warning-subtle'}
     default: // SAFE
-      return { dot: 'bg-success', text: 'text-success', bg: 'bg-success-subtle' }
+      return {dot: 'bg-success', text: 'text-success', bg: 'bg-success-subtle'}
   }
 })
 const instructionCard = computed(() => {
   if (status.value !== 'DANGER') {
-    return { color: '', variant: 'flat', border: false }
+    return {color: '', variant: 'flat', border: false}
   } else {
-    return { color: 'error-subtle', variant: 'flat', border: 'start' }
+    return {color: 'error-subtle', variant: 'flat', border: 'start'}
   }
 })
 // Function to calculate distance between two GPS coordinates
@@ -506,7 +551,7 @@ watch(
       updateOperatorInstructions()
     }
   },
-  { deep: true },
+  {deep: true},
 )
 
 // Function to check connection status based on last heartbeat
@@ -534,161 +579,165 @@ const checkConnectionStatus = () => {
 }
 // WebSocket connection function
 const connectWebSocket = vehicleType => {
-    if (wsConnections[vehicleType] && wsConnections[vehicleType].readyState === WebSocket.OPEN) {
-      console.log(`WebSocket for ${vehicleType} already connected`)
-      return
-    }
-
-    try {
-      console.log(`Connecting to ${vehicleType} telemetry WebSocket...`)
-      wsConnections[vehicleType] = new WebSocket(`ws://127.0.0.1:8000/vehicles/${vehicleType}/ws`)
-
-      wsConnections[vehicleType].onopen = () => {
-        console.log(`WebSocket connection for ${vehicleType} established`)
-        wsReconnectAttempts.value = 0
-
-        snackbarMessage.value = `Connected to ${vehicleType} telemetry`
-        snackbarColor.value = 'success'
-        showSnackbar.value = true
-      }
-
-      wsConnections[vehicleType].onmessage = event => {
-        try {
-          const data = JSON.parse(event.data)
-
-          // Ignore ping messages
-          if (data.type === 'ping') return
-
-          // Handle new coordination events
-          if (data.type === 'coordination_event') {
-            console.log(`Received coordination event:`, data.event)
-            switch (data.event) {
-              case 'coordination_active':
-                isCoordinationActive.value = true
-                snackbarMessage.value = 'Coordination Mode Activated.'
-                snackbarColor.value = 'info'
-                showSnackbar.value = true
-                break
-              case 'following_triggered':
-                isDroneFollowing.value = true
-                snackbarMessage.value = 'SAFETY: Drone is now following the car!'
-                snackbarColor.value = 'warning'
-                showSnackbar.value = true
-                break
-              case 'following_stopped':
-                isDroneFollowing.value = false
-                break
-              case 'coordination_stopped':
-                isCoordinationActive.value = false
-                isDroneFollowing.value = false
-                snackbarMessage.value = 'Coordination Mode Deactivated.'
-                snackbarColor.value = 'info'
-                showSnackbar.value = true
-                break
-              case 'coordination_fault':
-                snackbarMessage.value = `Coordination Fault: ${data.reason}`
-                snackbarColor.value = 'error'
-                showSnackbar.value = true
-                // Do not change isCoordinationActive or isDroneFollowing, as the service is still running
-                break
-              case 'survey_button_state_changed':
-                surveyButtonEnabled.value = data.enabled
-                console.log(`Survey button ${data.enabled ? 'enabled' : 'disabled'} at distance ${data.distance}m`)
-                break
-              case 'survey_abandoned':
-                snackbarMessage.value = `Survey abandoned: ${data.reason}`
-                snackbarColor.value = 'warning'
-                showSnackbar.value = true
-                break
-              case 'survey_completed':
-                snackbarMessage.value = 'Survey mission completed successfully! 🎉'
-                snackbarColor.value = 'success'
-                showSnackbar.value = true
-                break
-            }
-            return; // Stop processing since this wasn't a telemetry message
-          }
-
-          console.log(`Received ${vehicleType} telemetry data:`, data)
-
-          // Update a telemetry data object based on a vehicle type
-          if (vehicleType === 'drone') {
-            if (data.position) {
-              Object.assign(droneData.position, data.position)
-            }
-            if (data.velocity) {
-              Object.assign(droneData.velocity, data.velocity)
-            }
-            if (data.battery) {
-              Object.assign(droneData.battery, data.battery)
-            }
-            if (data.mission) {
-              Object.assign(droneData.mission, data.mission)
-            }
-            if (data.heartbeat) {
-              // To prevent flickering, we only update the timestamp if the new one is valid.
-              // Otherwise, we keep the last known good timestamp.
-              const newHeartbeatData = { ...data.heartbeat };
-              if (newHeartbeatData.timestamp === null && droneData.heartbeat.timestamp !== null) {
-                // If the incoming packet has no heartbeat, reuse the last one we saw.
-                newHeartbeatData.timestamp = droneData.heartbeat.timestamp;
-              }
-              Object.assign(droneData.heartbeat, newHeartbeatData)
-            }
-            if (data.vehicle_id) droneData.vehicle_id = data.vehicle_id
-          } else if (vehicleType === 'car') {
-            // Handle vehicle telemetry data
-            if (data.position) {
-              Object.assign(vehicleData.position, data.position)
-            }
-            if (data.velocity) {
-              Object.assign(vehicleData.velocity, data.velocity)
-            }
-            if (data.battery) {
-              Object.assign(vehicleData.battery, data.battery)
-            }
-            if (data.mission) {
-              Object.assign(vehicleData.mission, data.mission)
-            }
-            if (data.heartbeat) {
-              const newHeartbeatData = { ...data.heartbeat };
-              if (newHeartbeatData.timestamp === null && vehicleData.heartbeat.timestamp !== null) {
-                // If the incoming packet has no heartbeat, reuse the last one we saw.
-                newHeartbeatData.timestamp = vehicleData.heartbeat.timestamp;
-              }
-              Object.assign(vehicleData.heartbeat, newHeartbeatData)
-            }
-            if (data.vehicle_id) vehicleData.vehicle_id = data.vehicle_id
-          }
-
-        } catch (error) {
-          console.error(`Error processing ${vehicleType} telemetry message:`, error)
-        }
-      }
-
-      wsConnections[vehicleType].onclose = event => {
-        console.log(`WebSocket connection for ${vehicleType} closed: ${event.code} ${event.reason}`)
-
-        if (event.code !== 1000 && wsReconnectAttempts.value < maxReconnectAttempts) {
-          const delay = Math.min(1000 * Math.pow(2, wsReconnectAttempts.value), 10000)
-          wsReconnectAttempts.value++
-
-          console.log(`Attempting to reconnect ${vehicleType} in ${delay}ms`)
-          setTimeout(() => connectWebSocket(vehicleType), delay)
-        }
-      }
-
-      wsConnections[vehicleType].onerror = error => {
-        console.error(`WebSocket error for ${vehicleType}:`, error)
-      }
-
-    } catch (error) {
-      console.error(`Error establishing WebSocket connection for ${vehicleType}:`, error)
-      snackbarMessage.value = `Connection error for ${vehicleType}: ${error.message}`
-      snackbarColor.value = 'error'
-      showSnackbar.value = true
-    }
+  if (wsConnections[vehicleType] && wsConnections[vehicleType].readyState === WebSocket.OPEN) {
+    console.log(`WebSocket for ${vehicleType} already connected`)
+    return
   }
+
+  try {
+    console.log(`Connecting to ${vehicleType} telemetry WebSocket...`)
+    wsConnections[vehicleType] = new WebSocket(`ws://127.0.0.1:8000/vehicles/${vehicleType}/ws`)
+
+    wsConnections[vehicleType].onopen = () => {
+      console.log(`WebSocket connection for ${vehicleType} established`)
+      wsReconnectAttempts.value = 0
+
+      snackbarMessage.value = `Connected to ${vehicleType} telemetry`
+      snackbarColor.value = 'success'
+      showSnackbar.value = true
+
+    }
+
+    wsConnections[vehicleType].onmessage = event => {
+      try {
+        const data = JSON.parse(event.data)
+
+        // Ignore ping messages
+        if (data.type === 'ping') return
+
+        // Handle new coordination events
+        if (data.type === 'coordination_event') {
+          console.log(`Received coordination event:`, data.event)
+          switch (data.event) {
+            case 'coordination_active':
+              isCoordinationActive.value = true
+              snackbarMessage.value = 'Coordination Mode Activated.'
+              snackbarColor.value = 'info'
+              showSnackbar.value = true
+              break
+            case 'following_triggered':
+              isDroneFollowing.value = true
+              snackbarMessage.value = 'SAFETY: Drone is now following the car!'
+              snackbarColor.value = 'warning'
+              showSnackbar.value = true
+              break
+            case 'following_stopped':
+              isDroneFollowing.value = false
+              break
+            case 'coordination_stopped':
+              isCoordinationActive.value = false
+              isDroneFollowing.value = false
+              snackbarMessage.value = 'Coordination Mode Deactivated.'
+              snackbarColor.value = 'info'
+              showSnackbar.value = true
+              break
+            case 'coordination_fault':
+              snackbarMessage.value = `Coordination Fault: ${data.reason}`
+              snackbarColor.value = 'error'
+              showSnackbar.value = true
+              // Do not change isCoordinationActive or isDroneFollowing, as the service is still running
+              break
+            case 'survey_button_state_changed':
+              surveyButtonEnabled.value = data.enabled
+              console.log(`Survey button ${data.enabled ? 'enabled' : 'disabled'} at distance ${data.distance}m`)
+              break
+            case 'survey_abandoned':
+              snackbarMessage.value = `Survey abandoned: ${data.reason}`
+              snackbarColor.value = 'warning'
+              showSnackbar.value = true
+              break
+            case 'survey_completed':
+              surveyState.isComplete = true
+              surveyState.completedWaypoints = currentMissionWaypoints.value
+
+              snackbarMessage.value = 'Survey mission completed successfully! 🎉'
+              snackbarColor.value = 'success'
+              showSnackbar.value = true
+              break
+          }
+          return; // Stop processing since this wasn't a telemetry message
+        }
+
+        console.log(`Received ${vehicleType} telemetry data:`, data)
+
+        // Update a telemetry data object based on a vehicle type
+        if (vehicleType === 'drone') {
+          if (data.position) {
+            Object.assign(droneData.position, data.position)
+          }
+          if (data.velocity) {
+            Object.assign(droneData.velocity, data.velocity)
+          }
+          if (data.battery) {
+            Object.assign(droneData.battery, data.battery)
+          }
+          if (data.mission) {
+            Object.assign(droneData.mission, data.mission)
+          }
+          if (data.heartbeat) {
+            // To prevent flickering, we only update the timestamp if the new one is valid.
+            // Otherwise, we keep the last known good timestamp.
+            const newHeartbeatData = {...data.heartbeat};
+            if (newHeartbeatData.timestamp === null && droneData.heartbeat.timestamp !== null) {
+              // If the incoming packet has no heartbeat, reuse the last one we saw.
+              newHeartbeatData.timestamp = droneData.heartbeat.timestamp;
+            }
+            Object.assign(droneData.heartbeat, newHeartbeatData)
+          }
+          if (data.vehicle_id) droneData.vehicle_id = data.vehicle_id
+        } else if (vehicleType === 'car') {
+          // Handle vehicle telemetry data
+          if (data.position) {
+            Object.assign(vehicleData.position, data.position)
+          }
+          if (data.velocity) {
+            Object.assign(vehicleData.velocity, data.velocity)
+          }
+          if (data.battery) {
+            Object.assign(vehicleData.battery, data.battery)
+          }
+          if (data.mission) {
+            Object.assign(vehicleData.mission, data.mission)
+          }
+          if (data.heartbeat) {
+            const newHeartbeatData = {...data.heartbeat};
+            if (newHeartbeatData.timestamp === null && vehicleData.heartbeat.timestamp !== null) {
+              // If the incoming packet has no heartbeat, reuse the last one we saw.
+              newHeartbeatData.timestamp = vehicleData.heartbeat.timestamp;
+            }
+            Object.assign(vehicleData.heartbeat, newHeartbeatData)
+          }
+          if (data.vehicle_id) vehicleData.vehicle_id = data.vehicle_id
+        }
+
+      } catch (error) {
+        console.error(`Error processing ${vehicleType} telemetry message:`, error)
+      }
+    }
+
+    wsConnections[vehicleType].onclose = event => {
+      console.log(`WebSocket connection for ${vehicleType} closed: ${event.code} ${event.reason}`)
+
+      if (event.code !== 1000 && wsReconnectAttempts.value < maxReconnectAttempts) {
+        const delay = Math.min(1000 * Math.pow(2, wsReconnectAttempts.value), 10000)
+        wsReconnectAttempts.value++
+
+        console.log(`Attempting to reconnect ${vehicleType} in ${delay}ms`)
+        setTimeout(() => connectWebSocket(vehicleType), delay)
+      }
+    }
+
+    wsConnections[vehicleType].onerror = error => {
+      console.error(`WebSocket error for ${vehicleType}:`, error)
+    }
+
+  } catch (error) {
+    console.error(`Error establishing WebSocket connection for ${vehicleType}:`, error)
+    snackbarMessage.value = `Connection error for ${vehicleType}: ${error.message}`
+    snackbarColor.value = 'error'
+    showSnackbar.value = true
+  }
+}
 const disconnectWebSocket = vehicleType => {
   if (
     wsConnections[vehicleType] &&
@@ -714,7 +763,9 @@ const connectVehicle = async vehicleType => {
     if (!response.ok) {
       throw new Error(data.detail || `Failed to connect to ${vehicleType}`)
     }
-
+    if (vehicleType === 'car') {
+      armCarOnConnect()
+    }
     snackbarMessage.value = `${vehicleType.charAt(0).toUpperCase() + vehicleType.slice(1)} connected successfully`
     snackbarColor.value = 'success'
     showSnackbar.value = true
@@ -819,9 +870,11 @@ onMounted(() => {
   width: 100%;
   height: 100%;
 }
+
 :deep(.v-card) {
   margin: 0 auto;
 }
+
 /* Global styles for status dots and text remain here for now */
 .status-dot {
   width: 14px;

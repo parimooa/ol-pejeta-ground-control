@@ -139,10 +139,18 @@ class Vehicle:
         )
 
         print("Waiting for heartbeat...")
-        self.vehicle.wait_heartbeat(timeout=10)
-        print(
-            f"Connected to system {self.vehicle.target_system} component {self.vehicle.target_component}"
-        )
+        heartbeat_msg = self.vehicle.wait_heartbeat(timeout=10)
+        if heartbeat_msg:
+            print(
+                f"Connected to system {self.vehicle.target_system} component {self.vehicle.target_component}"
+            )
+        else:
+            print(
+                f"{self.vehicle_type}: ERROR - No heartbeat received within 10 seconds!"
+            )
+            raise Exception(
+                f"No heartbeat received from {self.vehicle_type} at {self.connection_string}"
+            )
         self.vehicle.mav.statustext_send(
             mavutil.mavlink.MAV_SEVERITY_NOTICE,
             "Connected to drone control system".encode(),
@@ -204,7 +212,7 @@ class Vehicle:
             stream_rate_hz,
             1,  # Start stream
         )
-        
+
         # Request extended status to get mission current info
         self.vehicle.mav.request_data_stream_send(
             self.vehicle.target_system,
@@ -410,7 +418,9 @@ class Vehicle:
 
         # If not in GUIDED mode, switch to GUIDED mode first
         if current_mode != FlightMode.GUIDED.value:
-            print("Vehicle is not in GUIDED mode. Setting to GUIDED mode before arming...")
+            print(
+                "Vehicle is not in GUIDED mode. Setting to GUIDED mode before arming..."
+            )
             if not self.set_mode(FlightMode.GUIDED):
                 print("Failed to set GUIDED mode. Cannot proceed with arming.")
                 return False
@@ -442,6 +452,7 @@ class Vehicle:
 
         print("Failed to confirm vehicle arming within timeout.")
         return False
+
     def disarm(self) -> bool:
         """Disarms the vehicle."""
         if not self.vehicle:
@@ -714,24 +725,6 @@ class Vehicle:
 
             # Check for waypoint visits when position updates
             self._check_waypoint_visits()
-            
-            # Debug car mission progress
-            if self.vehicle_type == "car" and self.mission_waypoints:
-                current_pos = {"lat": current_lat, "lon": current_lon}
-                closest_distance = float('inf')
-                closest_wp = None
-                for wp_seq, wp in self.mission_waypoints.items():
-                    dist = self._calculate_distance(current_lat, current_lon, wp["lat"], wp["lon"])
-                    if dist < closest_distance:
-                        closest_distance = dist
-                        closest_wp = wp_seq
-                # Only log occasionally to avoid spam
-                if hasattr(self, '_last_debug_time'):
-                    if time.time() - self._last_debug_time > 5:  # Every 5 seconds
-                        print(f"Car position debug: closest_wp={closest_wp}, distance={closest_distance:.1f}m, current_wp={self.current_waypoint_seq}, visited={list(self.visited_waypoints)}")
-                        self._last_debug_time = time.time()
-                else:
-                    self._last_debug_time = time.time()
 
         elif msg_type == "SYS_STATUS":
             self.last_telemetry["battery_voltage"] = msg.voltage_battery / 1000.0
@@ -739,7 +732,6 @@ class Vehicle:
 
         elif msg_type == "MISSION_CURRENT":
             # Update current waypoint sequence from autopilot
-            print(f"MISSION_CURRENT received: seq={msg.seq}")
             self.current_waypoint_seq = msg.seq
             self.last_telemetry["current_mission_wp_seq"] = msg.seq
 
@@ -753,8 +745,7 @@ class Vehicle:
                         break
                 self.next_waypoint_seq = next_wp
                 self.last_telemetry["next_mission_wp_seq"] = next_wp
-                print(f"Mission status updated: current={msg.seq}, next={next_wp}")
-                
+
         elif msg_type == "NAV_CONTROLLER_OUTPUT":
             self.last_telemetry["distance_to_mission_wp"] = msg.wp_dist
         elif msg_type == "VFR_HUD":
@@ -905,7 +896,9 @@ class Vehicle:
                 ):
                     self.visited_waypoints.add(wp_seq)
                     self._update_current_next_waypoints()
-                    print(f"🎯 Waypoint {wp_seq} visited! Distance: {distance:.2f}m, Current: {self.current_waypoint_seq}, Next: {self.next_waypoint_seq}")
+                    print(
+                        f"🎯 Waypoint {wp_seq} visited! Distance: {distance:.2f}m, Current: {self.current_waypoint_seq}, Next: {self.next_waypoint_seq}"
+                    )
                     del self._waypoint_visit_candidates[wp_seq]
             else:
                 if (

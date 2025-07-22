@@ -134,3 +134,25 @@ async def upload_mission(
     finally:
         # Clean up the temporary file
         os.unlink(temp_path)
+
+
+@router.post("/{vehicle_type}/arm")
+async def arm_vehicle_by_type(vehicle_type: str):
+    """Sends an arm command to the specified connected vehicle."""
+    vehicle = vehicle_service.get_vehicle(vehicle_type)
+    if not vehicle or not vehicle.vehicle:
+        raise HTTPException(
+            status_code=404, detail=f"Vehicle '{vehicle_type}' is not connected."
+        )
+
+    print(f"API: Received arm request for {vehicle_type}")
+    success = vehicle.arm()
+
+    if success:
+        return {"status": "success", "message": f"Arm command sent to {vehicle_type}."}
+    else:
+        # The arm_vehicle method already prints details, so we can provide a generic server error.
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to arm {vehicle_type}. Check backend logs for details.",
+        )

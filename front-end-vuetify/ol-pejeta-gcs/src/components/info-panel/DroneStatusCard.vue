@@ -237,14 +237,6 @@ const operationalStatus = computed(() => {
     actualStatus = 'Emergency'
   }
 
-  console.log('Drone telemetry analysis:', {
-    armed,
-    system_status,
-    custom_mode,
-    flight_mode,
-    original_status: operational_status,
-    determined_status: actualStatus
-  })
 
   return actualStatus
 })

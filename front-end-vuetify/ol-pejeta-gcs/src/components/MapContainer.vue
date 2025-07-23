@@ -342,6 +342,14 @@ import {
   removeConnectivityListeners
 } from '@/utils/OfflineMapUtils'
 
+// Import survey file utilities
+import {
+  generateSurveyFilename,
+  findClosestWaypoint,
+  saveSurveyToFile,
+  loadSurveysFromFiles
+} from '@/utils/SurveyFileUtils'
+
 const props = defineProps({
   distance: {
     type: Number,
@@ -700,32 +708,95 @@ const clearWaypoints = () => {
   hasAutoFittedWaypoints = false
 }
 
-// Survey utility functions
+// Survey utility functions - Mission Planner style lawnmower pattern
 const generateLawnmowerGrid = (waypoints) => {
   if (!waypoints || waypoints.length < 3) return []
 
   const sortedWaypoints = [...waypoints].sort((a, b) => a.seq - b.seq)
-  const coordinates = sortedWaypoints.map(wp => fromLonLat([wp.lon, wp.lat]))
+  const lats = sortedWaypoints.map(wp => wp.lat)
+  const lons = sortedWaypoints.map(wp => wp.lon)
 
-  // Create a simple line string connecting the waypoints in order
-  return [new Feature({ geometry: new LineString(coordinates) })]
+  const minLat = Math.min(...lats)
+  const maxLat = Math.max(...lats)
+  const minLon = Math.min(...lons)
+  const maxLon = Math.max(...lons)
+
+  const latRange = maxLat - minLat
+  const lonRange = maxLon - minLon
+
+  // Calculate appropriate spacing based on survey area size
+  const estimatedAreaSize = Math.max(latRange * 111320, lonRange * 111320 * Math.cos(minLat * Math.PI / 180))
+  const spacing = estimatedAreaSize < 500 ? 25 : 50 // 25m for small areas, 50m for larger areas
+  const latSpacing = spacing / 111320 // Convert spacing from meters to degrees
+
+  const gridLines = []
+  let currentLat = minLat
+  let lineCount = 0
+
+  // Generate horizontal lawnmower pattern lines
+  while (currentLat <= maxLat && lineCount < 50) {
+    const lineCoords = [
+      fromLonLat([minLon, currentLat]),
+      fromLonLat([maxLon, currentLat])
+    ]
+
+    const gridFeature = new Feature({
+      geometry: new LineString(lineCoords)
+    })
+
+    // Apply style directly to each feature to ensure visibility
+    gridFeature.setStyle(new Style({
+      stroke: new Stroke({
+        color: '#2196F3',
+        width: 4,
+        lineDash: [10, 5]
+      })
+    }))
+
+    gridLines.push(gridFeature)
+    currentLat += latSpacing
+    lineCount++
+  }
+
+  return gridLines
 }
 
-const saveSurveyedArea = (waypoints, vehicleId) => {
+const saveSurveyedArea = async (waypoints, vehicleId) => {
   try {
-    const timestamp = Date.now()
-    const surveyId = `survey_${vehicleId || 'unknown'}_${timestamp}`
+    const timestamp = new Date()
+    const surveyId = `survey_${vehicleId || 'unknown'}_${timestamp.getTime()}`
+
+    // Get current vehicle position for closest waypoint calculation
+    const vehiclePosition = props.vehicleTelemetryData?.position
+    const closestWaypointNum = vehiclePosition
+      ? findClosestWaypoint(waypoints, vehiclePosition)
+      : 1
+
+    // Generate filename with proper format: <site-name>_<waypoint-no>_DD-MM-YY-HH:MM:SS
+    const siteName = 'site-ol-pejeta' // Use a default site name, could be made configurable
+    const filename = generateSurveyFilename(siteName, closestWaypointNum, timestamp)
 
     const surveyData = {
       id: surveyId,
       waypoints: waypoints.map(wp => ({ lat: wp.lat, lon: wp.lon, seq: wp.seq })),
-      vehicleId: vehicleId || 'unknown',
-      completedAt: new Date(timestamp).toISOString()
-    }
+      vehicleId: String(vehicleId) || 'unknown',
+      completedAt: timestamp.toISOString(),
+      siteName: siteName,
+      closestWaypoint: closestWaypointNum,
+      }
 
-    const existingData = JSON.parse(localStorage.getItem('ol_pejeta_surveys') || '{}')
-    existingData[surveyId] = surveyData
-    localStorage.setItem('ol_pejeta_surveys', JSON.stringify(existingData))
+    // Try to save to file system first
+    try {
+      await saveSurveyToFile(surveyData, filename)
+      console.log(`Survey saved to file: ${filename}`)
+    } catch (fileError) {
+      console.warn('Failed to save to file system, falling back to localStorage:', fileError)
+
+      // Fallback to localStorage
+      const existingData = JSON.parse(localStorage.getItem('ol_pejeta_surveys') || '{}')
+      existingData[surveyId] = surveyData
+      localStorage.setItem('ol_pejeta_surveys', JSON.stringify(existingData))
+    }
 
   } catch (error) {
     console.error('Error saving survey area:', error)
@@ -743,23 +814,49 @@ const loadSurveyedAreas = () => {
 }
 
 const displaySurveyGrid = (waypoints) => {
-  if (!surveyGridSource) return
+  if (!surveyGridSource || !waypoints || waypoints.length < 3) return
+
   surveyGridSource.clear()
+  const gridFeatures = generateLawnmowerGrid(waypoints)
 
-  if (!waypoints || waypoints.length < 2) return
-
-  const features = generateLawnmowerGrid(waypoints)
-  surveyGridSource.addFeatures(features)
+  if (gridFeatures.length > 0) {
+    surveyGridSource.addFeatures(gridFeatures)
+  }
 }
 
 const displayCompletedSurvey = (waypoints) => {
   if (!completedSurveySource || !waypoints || waypoints.length < 3) return
 
-  // Convert waypoints to map coordinates first
-  const coordinates = waypoints.map(wp => fromLonLat([wp.lon, wp.lat]))
+  // Filter out any invalid waypoints with null/undefined coordinates
+  const validWaypoints = waypoints.filter(wp =>
+    wp && wp.lat != null && wp.lon != null &&
+    !isNaN(wp.lat) && !isNaN(wp.lon) &&
+    Math.abs(wp.lat) <= 90 && Math.abs(wp.lon) <= 180
+  )
+
+  if (validWaypoints.length < 3) {
+    console.warn("Not enough valid waypoints to form survey polygon")
+    return
+  }
+
+  // Convert waypoints to map coordinates with validation
+  const coordinates = validWaypoints.map(wp => {
+    const coord = fromLonLat([wp.lon, wp.lat])
+    // Validate converted coordinates
+    if (!isFinite(coord[0]) || !isFinite(coord[1])) {
+      console.warn(`Invalid coordinate conversion for waypoint: ${wp.lat}, ${wp.lon}`)
+      return null
+    }
+    return coord
+  }).filter(coord => coord !== null)
+
+  if (coordinates.length < 3) {
+    console.warn("Not enough valid coordinates after conversion")
+    return
+  }
 
   // Calculate the convex hull to represent the surveyed area as a clean polygon
-  const hullCoordinates = calculateConvexHull(coordinates);
+  const hullCoordinates = calculateConvexHull([...coordinates]); // Create copy to avoid mutation
 
   // A valid polygon needs at least 3 unique points to form an area.
   if (hullCoordinates.length < 3) {
@@ -777,13 +874,38 @@ const displayCompletedSurvey = (waypoints) => {
   completedSurveySource.addFeature(surveyPolygon)
 }
 
-const loadExistingSurveys = () => {
-  const surveys = loadSurveyedAreas()
-  surveys.forEach(survey => {
-    if (survey.waypoints) {
-      displayCompletedSurvey(survey.waypoints)
+const loadExistingSurveys = async () => {
+  try {
+    // Try to load from file system first
+    const fileSurveys = await loadSurveysFromFiles()
+
+    if (fileSurveys.length > 0) {
+      console.log(`Loaded ${fileSurveys.length} surveys from files`)
+      fileSurveys.forEach(survey => {
+        if (survey.waypoints) {
+          displayCompletedSurvey(survey.waypoints)
+        }
+      })
+    } else {
+      // Fallback to localStorage if no file surveys found
+      console.log('No file surveys found, loading from localStorage')
+      const localSurveys = loadSurveyedAreas()
+      localSurveys.forEach(survey => {
+        if (survey.waypoints) {
+          displayCompletedSurvey(survey.waypoints)
+        }
+      })
     }
-  })
+  } catch (error) {
+    console.error('Error loading existing surveys:', error)
+    // Final fallback to localStorage
+    const localSurveys = loadSurveyedAreas()
+    localSurveys.forEach(survey => {
+      if (survey.waypoints) {
+        displayCompletedSurvey(survey.waypoints)
+      }
+    })
+  }
 }
 
 const calculateConvexHull = (points) => {
@@ -956,14 +1078,7 @@ const initMap = () => {
   surveyGridSource = new VectorSource()
   surveyGridLayer = new VectorLayer({
     source: surveyGridSource,
-    style: new Style({
-      stroke: new Stroke({
-        color: '#2196F3',
-        width: 2,
-        lineDash: [10, 5]
-      })
-    }),
-    zIndex: 3
+    zIndex: 20 // High z-index to ensure visibility above other layers
   })
 
   completedSurveySource = new VectorSource()
@@ -989,9 +1104,9 @@ const initMap = () => {
       satelliteLayer,
       hybridLabelsLayer,
       completedSurveyLayer,
-      surveyGridLayer,
       routeLayer,
       vectorLayer,
+      surveyGridLayer, // Move survey grid layer to render above other features
       waypointLayer
     ],
     view: new View({
@@ -1050,40 +1165,24 @@ watch(followDrone, (isFollowing) => {
   }
 })
 
-// WATCHER 1: Handles showing/hiding the blue "planned" grid based on the presence of waypoints.
+// Survey grid management - show grid when waypoints exist, hide when cleared
 watch(() => props.droneMissionWaypoints, (waypoints) => {
-  const hasWaypoints = waypoints && waypoints.length > 2;
-
-  if (hasWaypoints) {
-    // If waypoints exist, it means a survey is planned or active. Display the grid.
-    console.log('Waypoints detected, displaying planned survey grid.');
+  if (waypoints && waypoints.length > 2) {
     displaySurveyGrid(waypoints);
-  } else {
-    // If waypoints are cleared, the mission is over or reset. Clear the grid.
-    if (surveyGridSource) {
-      console.log('No waypoints detected, clearing planned survey grid.');
-      surveyGridSource.clear();
-    }
+  } else if (surveyGridSource) {
+    surveyGridSource.clear();
   }
 }, { deep: true, immediate: true });
 
-
-// WATCHER 2: Handles the moment a survey is marked as "complete".
+// Survey completion handler - save completed survey and show as green polygon
 watch(() => props.surveyComplete, (isComplete, wasComplete) => {
-  // This runs only when surveyComplete transitions from false to true.
   if (isComplete && !wasComplete && props.droneMissionWaypoints.length > 2) {
     const waypoints = props.droneMissionWaypoints;
     const droneId = props.droneTelemetryData?.vehicle_id || 'unknown';
 
-    console.log('Survey complete! Saving area, drawing green polygon, and clearing blue grid.');
-
-    // Save the completed survey data to local storage
     saveSurveyedArea(waypoints, droneId);
-
-    // Display the final completed area as a green polygon
     displayCompletedSurvey(waypoints);
 
-    // Explicitly clear the blue "planned" grid, as the survey is now finished.
     if (surveyGridSource) {
       surveyGridSource.clear();
     }

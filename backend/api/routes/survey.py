@@ -1,5 +1,10 @@
 from fastapi import APIRouter, HTTPException
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
+from datetime import datetime
+from pathlib import Path
+import os
+import json
+from pydantic import BaseModel, Field
 from ...services.survey_service import survey_service
 from ...services.vehicle_service import vehicle_service
 from ...models.waypoint import Waypoint
@@ -146,3 +151,187 @@ async def reset_mission():
         return {"message": "Mission reset", "status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# Survey file storage models
+class SurveyData(BaseModel):
+    id: str
+    waypoints: List[Dict[str, Any]]
+    vehicleId: str = "unknown"
+    completedAt: str
+    siteName: Optional[str] = None
+    closestWaypoint: Optional[int] = None
+    filename: Optional[str] = None
+
+class SaveSurveyRequest(BaseModel):
+    filename: str = Field(..., description="Filename for the survey")
+    data: SurveyData = Field(..., description="Survey data to save")
+
+class DeleteSurveyRequest(BaseModel):
+    filename: str = Field(..., description="Filename to delete")
+
+
+# Survey storage configuration
+SURVEYS_DIR = Path("surveyed_area")
+SURVEYS_DIR.mkdir(exist_ok=True)
+
+from fastapi import Request
+@router.post("/save")
+async def save_survey(request: SaveSurveyRequest):
+    """
+    Save a survey to file-based storage in the surveyed_area directory
+    """
+    try:
+        # Ensure filename ends with .json
+        filename = request.filename
+        if not filename.endswith('.json'):
+            filename += '.json'
+        
+        # Create full file path
+        file_path = SURVEYS_DIR / filename
+        
+        # Prepare survey data with filename
+        survey_data = request.data.dict()
+        survey_data['filename'] = filename
+        survey_data['savedAt'] = datetime.now().isoformat()
+        
+        # Write to file
+        with open(file_path, 'w') as f:
+            json.dump(survey_data, f, indent=2)
+        
+        return {
+            "success": True,
+            "message": f"Survey saved successfully as {filename}",
+            "filename": filename,
+            "path": str(file_path.absolute())
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save survey: {str(e)}")
+
+
+@router.get("/load")
+async def load_surveys() -> List[Dict[str, Any]]:
+    """
+    Load all surveys from the surveyed_area directory
+    """
+    try:
+        surveys = []
+        
+        # Check if directory exists
+        if not SURVEYS_DIR.exists():
+            return surveys
+        
+        # Read all JSON files in the directory
+        for file_path in SURVEYS_DIR.glob("*.json"):
+            try:
+                with open(file_path, 'r') as f:
+                    survey_data = json.load(f)
+                    # Ensure filename is set
+                    survey_data['filename'] = file_path.name
+                    surveys.append(survey_data)
+            except json.JSONDecodeError as e:
+                print(f"Warning: Could not parse survey file {file_path}: {e}")
+                continue
+            except Exception as e:
+                print(f"Warning: Error reading survey file {file_path}: {e}")
+                continue
+        
+        # Sort by completion time (most recent first)
+        surveys.sort(key=lambda x: x.get('completedAt', ''), reverse=True)
+        
+        return surveys
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load surveys: {str(e)}")
+
+
+@router.delete("/delete")
+async def delete_survey(request: DeleteSurveyRequest):
+    """
+    Delete a survey file from the surveyed_area directory
+    """
+    try:
+        # Ensure filename ends with .json
+        filename = request.filename
+        if not filename.endswith('.json'):
+            filename += '.json'
+        
+        # Create full file path
+        file_path = SURVEYS_DIR / filename
+        
+        # Check if file exists
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail=f"Survey file {filename} not found")
+        
+        # Delete the file
+        file_path.unlink()
+        
+        return {
+            "success": True,
+            "message": f"Survey {filename} deleted successfully",
+            "filename": filename
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete survey: {str(e)}")
+
+
+@router.get("/list")
+async def list_surveys() -> List[str]:
+    """
+    List all survey filenames in the surveyed_area directory
+    """
+    try:
+        filenames = []
+        
+        # Check if directory exists
+        if not SURVEYS_DIR.exists():
+            return filenames
+        
+        # Get all JSON filenames
+        for file_path in SURVEYS_DIR.glob("*.json"):
+            filenames.append(file_path.name)
+        
+        # Sort filenames (most recent first based on timestamp in filename)
+        filenames.sort(reverse=True)
+        
+        return filenames
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list surveys: {str(e)}")
+
+
+@router.get("/info")
+async def get_surveys_info():
+    """
+    Get information about the surveys directory and stored surveys
+    """
+    try:
+        # Check if directory exists
+        if not SURVEYS_DIR.exists():
+            return {
+                "directory_exists": False,
+                "directory_path": str(SURVEYS_DIR.absolute()),
+                "survey_count": 0,
+                "total_size_bytes": 0
+            }
+        
+        # Count files and calculate total size
+        survey_files = list(SURVEYS_DIR.glob("*.json"))
+        survey_count = len(survey_files)
+        
+        total_size = sum(f.stat().st_size for f in survey_files if f.exists())
+        
+        return {
+            "directory_exists": True,
+            "directory_path": str(SURVEYS_DIR.absolute()),
+            "survey_count": survey_count,
+            "total_size_bytes": total_size,
+            "filenames": [f.name for f in survey_files]
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get surveys info: {str(e)}")

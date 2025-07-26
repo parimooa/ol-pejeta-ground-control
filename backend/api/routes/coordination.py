@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 from typing import Dict, Any
-
+from backend.services.vehicle_service import vehicle_service
+from backend.api.websockets.telemetry import telemetry_manager
 from backend.services.coordination_service import coordination_service
 
 router = APIRouter(prefix="/coordination", tags=["coordination"])

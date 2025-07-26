@@ -26,7 +26,9 @@ class CoordinationService:
         self._last_proximity_check = 0
         self._proximity_check_cooldown = 2  # seconds
         self._last_survey_mode_state = False  # Track previous survey state
-        self._survey_initiated_by_us = False  # Track if we initiated the current survey
+        self._survey_initiated_by_user = (
+            False  # Track if we initiated the current survey
+        )
 
     def _calculate_distance(self, pos1, pos2) -> float:
         """Calculate distance between two GPS coordinates using Haversine formula."""
@@ -54,7 +56,7 @@ class CoordinationService:
             return False
 
         # Primary requirement: Survey must be initiated by  user from frontend
-        if not self._survey_initiated_by_us:
+        if not self._survey_initiated_by_user:
             return False
 
         return not drone.is_mission_complete()  # Mission is complete
@@ -120,7 +122,7 @@ class CoordinationService:
             if self._last_survey_mode_state and not is_surveying:
                 print("🎉 Survey completed - drone switched back to GUIDED mode")
                 # Clear the survey flag when survey completes
-                # self._survey_initiated_by_us = False
+                # self._survey_initiated_by_user = False
                 telemetry_manager.broadcast_event(
                     {
                         "event": "survey_completed",
@@ -177,7 +179,7 @@ class CoordinationService:
                     )
                     # Abandon survey and switch to follow
                     survey_service.scan_abandoned = True
-                    self._survey_initiated_by_us = (
+                    self._survey_initiated_by_user = (
                         False  # Clear survey flag when abandoning
                     )
 
@@ -339,7 +341,7 @@ class CoordinationService:
         )
 
         # Mark that we initiated this survey
-        self._survey_initiated_by_us = True
+        self._survey_initiated_by_user = True
 
         # Execute survey with constrained pattern
         success = await survey_service.execute_proximity_survey(
@@ -349,7 +351,7 @@ class CoordinationService:
         )
 
         # Clear the flag when survey completes
-        self._survey_initiated_by_us = False
+        self._survey_initiated_by_user = False
 
         return success
 
@@ -379,7 +381,7 @@ class CoordinationService:
         self._survey_mode_detected = False
         self._last_survey_mode_state = False
         self._survey_button_enabled = False
-        self._survey_initiated_by_us = False
+        self._survey_initiated_by_user = False
         telemetry_manager.broadcast_event({"event": "coordination_stopped"})
 
         if self._thread:

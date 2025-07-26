@@ -6,8 +6,8 @@
 
       <!-- Drone Status and Controls -->
       <div class="d-flex align-center mr-4">
-        <v-icon :color="isDroneConnected ? 'success' : 'error'" icon="mdi-quadcopter" class="mr-2"/>
-        <span class="text-subtitle-2 font-weight-medium" :class="isDroneConnected ? 'text-success' : 'text-error'">
+        <v-icon :color="isDroneConnected ? 'success' : 'error'" class="mr-2" icon="mdi-quadcopter"/>
+        <span :class="isDroneConnected ? 'text-success' : 'text-error'" class="text-subtitle-2 font-weight-medium">
           {{ isDroneConnected ? 'Drone Connected' : 'Drone Disconnected' }}
         </span>
         <v-btn
@@ -34,8 +34,8 @@
 
       <!-- Vehicle Status and Controls -->
       <div class="d-flex align-center mr-4">
-        <v-icon :color="isVehicleConnected ? 'success' : 'error'" icon="mdi-car" class="mr-2"/>
-        <span class="text-subtitle-2 font-weight-medium" :class="isVehicleConnected ? 'text-success' : 'text-error'">
+        <v-icon :color="isVehicleConnected ? 'success' : 'error'" class="mr-2" icon="mdi-car"/>
+        <span :class="isVehicleConnected ? 'text-success' : 'text-error'" class="text-subtitle-2 font-weight-medium">
           {{ isVehicleConnected ? 'Vehicle Connected' : 'Vehicle Disconnected' }}
         </span>
         <v-btn
@@ -64,8 +64,8 @@
         <v-tab
           v-for="(item, index) in navItems"
           :key="index"
-          class="text-white text-subtitle-1 font-weight-medium"
           :value="index"
+          class="text-white text-subtitle-1 font-weight-medium"
         >
           {{ item.label }}
         </v-tab>
@@ -75,33 +75,33 @@
 
     <InfoPanel
       :distance="distance"
+      :drone-telemetry-data="droneData"
       :instruction-card="instructionCard"
       :instructions="instructions"
       :mission-steps="missionSteps"
       :status="status"
       :status-color="statusColor"
-      :drone-telemetry-data="droneData"
-      :vehicle-telemetry-data="vehicleData"
-      :vehicle-location="vehicleLocation"
       :survey-button-enabled="surveyButtonEnabled"
+      :vehicle-location="vehicleLocation"
+      :vehicle-telemetry-data="vehicleData"
       @initiate-survey="initiateSurvey"
     />
 
     <v-main>
       <div class="d-flex drone-tracking-container">
         <MapContainer
-          class="flex-grow-1"
           :distance="distance"
+          :drone-mission-waypoints="currentMissionWaypoints"
           :drone-telemetry-data="droneData"
-          :is-drone-connected="isDroneConnected"
           :is-coordination-active="isCoordinationActive"
+          :is-drone-connected="isDroneConnected"
           :is-drone-following="isDroneFollowing"
+          :is-drone-surveying="isDroneSurveying"
           :is-vehicle-connected="isVehicleConnected"
+          :survey-complete="isSurveyComplete"
           :vehicle-telemetry-data="vehicleData"
           :vehicle-waypoints="vehicleData.mission.mission_waypoints"
-          :drone-mission-waypoints="currentMissionWaypoints"
-          :survey-complete="isSurveyComplete"
-          :is-drone-surveying="isDroneSurveying"
+          class="flex-grow-1"
         />
       </div>
     </v-main>
@@ -109,8 +109,8 @@
     <v-snackbar
       v-model="showSnackbar"
       :color="snackbarColor"
-      location="top"
       :timeout="4000"
+      location="top"
     >
       {{ snackbarMessage }}
     </v-snackbar>
@@ -122,6 +122,8 @@
 import {computed, onBeforeUnmount, onMounted, reactive, ref, watch} from 'vue'
 import InfoPanel from './components/InfoPanel.vue'
 import MapContainer from './components/MapContainer.vue'
+
+const surveyInProgress = ref(false)
 
 // Navigation state
 const activeTab = ref(0)
@@ -193,8 +195,8 @@ const vehicleData = reactive({
     distance_to_wp: 0,
     progress_percentage: 0,
     total_waypoints: 0,
-    mission_waypoints: {}, // <-- Add this
-    visited_waypoints: [],   // <-- Add this
+    mission_waypoints: {}, // <--
+    visited_waypoints: [],   // <--
   },
   heartbeat: {
     timestamp: null,
@@ -237,29 +239,16 @@ const surveyState = reactive({
   isComplete: false,
   completedWaypoints: []
 })
+const instructionType = ref('info')
+const surveyInitiated = ref(false)
+
 
 // Add computed property for survey completion
 const isSurveyComplete = computed(() => surveyState.isComplete)
 
 // Add computed property for drone surveying state
 const isDroneSurveying = computed(() => {
-  const droneStatus = droneData.heartbeat
-  if (!droneStatus) {
-      return false
-  }
-  
-  const { armed, custom_mode } = droneStatus
-  const groundSpeed = droneData.velocity.ground_speed || 0
-  const hasWaypoints = Object.keys(droneData.mission.mission_waypoints || {}).length > 0
-  const waypointCount = Object.keys(droneData.mission.mission_waypoints || {}).length
-  
-  const inAutoMode = custom_mode === 3
-  const isMovingWithWaypoints = hasWaypoints && groundSpeed > 0.1
-  
-  
-  // More flexible detection: drone is surveying if moving with waypoints and either:
-  // 1. In AUTO mode, OR 2. Coordination is active
-  return armed && isMovingWithWaypoints && (inAutoMode || isCoordinationActive.value)
+  return surveyInProgress.value
 })
 
 // Get current mission waypoints from drone telemetry
@@ -270,20 +259,12 @@ const currentMissionWaypoints = computed(() => {
     lon: wp.lon,
     seq: wp.seq
   }))
-  
-  
+
+
   return mappedWaypoints
 })
 
 // Vehicle info derived from telemetry data
-const vehicleSpeed = computed(() => {
-  // Ground speed from telemetry is in m/s. Default to 0 if not available.
-  return vehicleData.velocity.ground_speed.toFixed(2) ?? 0
-})
-const vehicleState = computed(() => {
-  // Use a small threshold (e.g., 0.1 m/s) to account for GPS drift or minor fluctuations.
-  return (vehicleData.velocity.ground_speed ?? 0) > 0.1 ? 'Moving' : 'Parked'
-})
 const vehicleLocation = ref('Site Ol Pejeta')
 
 // Instructions and mission steps
@@ -349,27 +330,55 @@ const getDroneOperationalContext = () => {
 
 // Enhanced function to update operator instructions based on car/vehicle telemetry
 const updateOperatorInstructions = () => {
+  if (!isVehicleConnected.value) {
+    instructions.value = '⚠️ VEHICLE NOT CONNECTED: Please connect the ground vehicle to receive mission instructions.'
+    instructionType.value = 'warning'
+    return // Exit early, as no other instructions are relevant.
+  }
+
   const droneContext = getDroneOperationalContext()
   const vehicleHeading = vehicleData.velocity.heading
   const vehicleSpeed = vehicleData.velocity.ground_speed || 0
   const vehiclePos = vehicleData.position
+  const droneSpeed = droneData.velocity.ground_speed || 0
 
-  // Get mission data from vehicle telemetry
   const missionData = vehicleData.mission
   const currentWaypoint = missionData.current_wp_seq || 0
   const totalWaypoints = missionData.total_waypoints || 0
   const missionWaypoints = missionData.mission_waypoints || {}
 
-  // Default instruction
   let instruction = 'Standby for mission instructions.'
+  instructionType.value = 'info' // Default type
 
-  // Priority 1: Waypoint navigation using telemetry mission data
+  // Check if survey was just initiated (highest priority)
+  if (surveyInitiated.value && !isDroneSurveying.value) {
+    instruction = '🚁 SURVEY INITIATED: Drone is preparing to start survey mission. Maintain current position and avoid sudden movements.'
+    instructionType.value = 'survey'
+    instructions.value = instruction
+    return // Exit early for survey initiation message
+  }
+
+  // Check if drone is surveying - this takes priority over other instructions
+  if (isDroneSurveying.value && vehicleSpeed < 0.5 && !isDroneFollowing.value) {
+    instruction = '🚁 SURVEY IN PROGRESS: Drone is actively surveying. Maintain current position and avoid sudden movements.'
+    instructionType.value = 'survey'
+    instructions.value = instruction
+    return // Exit early to prioritise survey message
+  }
+
+  // Check if drone is in follow mode (not surveying, following is true, drone moving, vehicle parked)
+  if (!isDroneSurveying.value && isDroneFollowing.value && droneSpeed > 1 && vehicleSpeed < 0.5) {
+    instruction = '🤖 DRONE FOLLOWING: Drone is in follow mode and tracking ground vehicle. Vehicle is parked - drone maintaining position.'
+    instructionType.value = 'info'
+    instructions.value = instruction
+    return // Exit early for follow mode message
+  }
+
+  // Rest of the function remains the same...
   if (totalWaypoints > 0 && missionWaypoints && Object.keys(missionWaypoints).length > 0) {
-    // Find the target waypoint (current or next unvisited)
     let targetWaypointSeq = currentWaypoint
     const visitedWaypoints = missionData.visited_waypoints || []
 
-    // If current waypoint is already visited, find next unvisited
     if (visitedWaypoints.includes(currentWaypoint)) {
       const sortedWaypoints = Object.keys(missionWaypoints).map(Number).sort((a, b) => a - b)
       for (const seq of sortedWaypoints) {
@@ -383,107 +392,68 @@ const updateOperatorInstructions = () => {
     const targetWaypoint = missionWaypoints[targetWaypointSeq]
 
     if (targetWaypoint && vehiclePos.latitude && vehiclePos.longitude) {
-      // Calculate distance and bearing to target waypoint
       const wpDistance = calculateDistance(
         vehiclePos.latitude, vehiclePos.longitude,
         targetWaypoint.lat, targetWaypoint.lon
       )
-
       const bearing = calculateBearing(
         vehiclePos.latitude, vehiclePos.longitude,
         targetWaypoint.lat, targetWaypoint.lon
       )
+      const waypointNumber = targetWaypointSeq + 1
 
-      const waypointNumber = targetWaypointSeq + 1 // Display as 1-indexed
-
-      if (wpDistance <= 5) {
+      if (wpDistance <= 5 && !isDroneSurveying.value && !surveyInitiated.value) {
         instruction = `🎯 WAYPOINT REACHED: You've arrived at waypoint ${waypointNumber}/${totalWaypoints}. Survey operation available here.`
+        instructionType.value = 'success'
         waypointReached.value = true
       } else {
         waypointReached.value = false
         const targetDirection = bearingToDirection(bearing)
         const compassDirection = bearingToCompass(bearing)
 
-        // Calculate turn instructions based on VEHICLE heading
         if (vehicleHeading !== null && vehicleHeading !== undefined) {
           const relativeAngle = getRelativeDirection(vehicleHeading, bearing)
-
           let turnInstruction = ''
           if (Math.abs(relativeAngle) < 15) {
             turnInstruction = '➡️ Continue straight'
           } else if (relativeAngle > 0) {
-            if (relativeAngle > 45) {
-              turnInstruction = `🔄 Turn sharp right (${Math.round(relativeAngle)}°)`
-            } else {
-              turnInstruction = `↗️ Turn right (${Math.round(relativeAngle)}°)`
-            }
+            turnInstruction = relativeAngle > 45 ? `🔄 Turn sharp right (${Math.round(relativeAngle)}°)` : `↗️ Turn right (${Math.round(relativeAngle)}°)`
           } else {
-            if (relativeAngle < -45) {
-              turnInstruction = `🔄 Turn sharp left (${Math.abs(Math.round(relativeAngle))}°)`
-            } else {
-              turnInstruction = `↖️ Turn left (${Math.abs(Math.round(relativeAngle))}°)`
-            }
+            turnInstruction = relativeAngle < -45 ? `🔄 Turn sharp left (${Math.abs(Math.round(relativeAngle))}°)` : `↖️ Turn left (${Math.abs(Math.round(relativeAngle))}°)`
           }
-
-          // Speed guidance
-          let speedGuidance = ''
-          if (vehicleSpeed > 5) {
-            speedGuidance = ' - SLOW DOWN'
-          } else if (vehicleSpeed < 0.5) {
-            speedGuidance = ' - START MOVING'
-          }
-
+          let speedGuidance = vehicleSpeed > 5 ? ' - SLOW DOWN' : (vehicleSpeed < 0.5 ? ' - START MOVING' : '')
           instruction = `${turnInstruction} to head ${compassDirection} for ${Math.round(wpDistance)}m to waypoint ${waypointNumber}/${totalWaypoints}${speedGuidance}.`
         } else {
           instruction = `🧭 Drive ${compassDirection} (${targetDirection.toLowerCase()}) for ${Math.round(wpDistance)}m to reach waypoint ${waypointNumber}/${totalWaypoints}.`
         }
+        instructionType.value = 'action'
       }
     }
   }
+  //
+  // if (droneContext === 'mission_active') {
+  //   if (isCoordinationActive.value) {
+  if (490 > distance.value > 400) {
+    instruction = '⚠️ MOVE TOWARDS DRONE: Drive closer to drone position for coordination. Check drone location on map.'
+    instructionType.value = 'warning'
+  } else if (distance.value > 500) {
+    instruction = '🚨 CRITICAL: MOVE CLOSER TO DRONE - Distance exceeds 500m safety limit. Drive towards drone position immediately!'
+    instructionType.value = 'error'
+    instructions.value = instruction
+    return
 
-  // Priority 2: Drone coordination context (modifies basic navigation)
-  if (droneContext === 'mission_active') {
-    if (isCoordinationActive.value) {
-      if (distance.value > 400) {
-        instruction = '⚠️ MOVE TOWARDS DRONE: Drive closer to drone position for coordination. Check drone location on map.'
-      } else if (vehicleSpeed > 2 && waypointReached.value === false) {
-        instruction = '🛑 SLOW DOWN: Approaching waypoint. Drone may start survey here. Reduce speed.'
-      } else if (waypointReached.value) {
-        instruction = '✅ MAINTAIN POSITION: You are at the survey waypoint. Keep vehicle stationary while drone surveys.'
-      }
-    } else {
-      // Drone active but no coordination - still provide waypoint guidance
-      if (totalWaypoints > 0 && !waypointReached.value) {
-        // Keep existing waypoint instruction but add drone context
-        instruction += ' (Drone is active but not coordinated)'
-      } else {
-        instruction = '🚁 Drone is executing mission independently. Continue to next waypoint or standby.'
-      }
-    }
+  } else if (vehicleSpeed > 2 && !waypointReached.value) {
+    instruction = '🛑 SLOW DOWN: Approaching waypoint. Drone may start survey here. Reduce speed.'
+    instructionType.value = 'action'
+  } else if (waypointReached.value && !surveyInitiated.value) {
+    instruction = '✅ MAINTAIN POSITION: You are at the survey waypoint. Keep vehicle stationary while drone surveys.'
+    instructionType.value = 'success'
   }
-
-  // Priority 3: Safety overrides (highest priority)
-  if (distance.value > 500) {
-    instruction = '🚨 DANGER: Drone is too far away! Drive towards drone position immediately or stop operations.'
-  } else if (distance.value > 490) {
-    instruction = '⚠️ WARNING: Approaching maximum safe distance from drone. Check drone position and move closer if needed.'
-  }
-
-  // Add vehicle status context
-  if (vehicleSpeed > 10) {
-    instruction += ' ⚠️ SPEED WARNING: Reduce speed for safety.'
-  }
+  //   }
+  // }
 
   instructions.value = instruction
-  // console.log('Updated operator instructions (vehicle-focused):', {
-  //   instruction,
-  //   currentWP: currentWaypoint,
-  //   totalWPs: totalWaypoints,
-  //   visitedWPs: missionData.visited_waypoints || [],
-  //   waypointReached: waypointReached.value
-  // })
 }
-
 const armCarOnConnect = async () => {
   console.log('WebSocket for car is open. Sending arm command...')
   try {
@@ -554,7 +524,11 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
 }
 // Watch for changes in drone or vehicle position to update distance and instructions
 watch(
-  [() => droneData.position, () => vehicleData.position, () => vehicleData.velocity, () => droneData.heartbeat],
+  [() => droneData.position, () => vehicleData.position, () => vehicleData.velocity, () => droneData.heartbeat, () => isCoordinationActive.value,
+    () => isDroneFollowing.value,
+    () => isDroneSurveying.value,
+    () => isVehicleConnected.value
+  ],
   ([dronePos, vehiclePos]) => {
     if (
       dronePos &&
@@ -571,15 +545,15 @@ watch(
         vehiclePos.longitude,
       )
       distance.value = Math.round(newDistance)
-
       // Update instructions when position, velocity, or drone status changes
       updateOperatorInstructions()
+      fetchCoordinationStatus()
     }
   },
   {deep: true},
 )
 
-// Function to check connection status based on last heartbeat
+
 const checkConnectionStatus = () => {
   const now = Date.now()
   const CONNECTION_TIMEOUT = 5000 // 5 seconds
@@ -678,7 +652,7 @@ const connectWebSocket = vehicleType => {
               snackbarMessage.value = 'Survey mission completed successfully! 🎉'
               snackbarColor.value = 'success'
               showSnackbar.value = true
-              
+
               // Clear mission waypoints after survey completion with a small delay
               setTimeout(() => {
                 console.log('Clearing mission waypoints after survey completion')
@@ -819,7 +793,6 @@ const connectVehicle = async vehicleType => {
     showSnackbar.value = true
   }
 }
-
 const disconnectVehicle = async vehicleType => {
   console.log(`Disconnecting ${vehicleType}...`)
   try {
@@ -853,7 +826,15 @@ const disconnectVehicle = async vehicleType => {
   }
 }
 const initiateSurvey = async () => {
+  if (!surveyButtonEnabled.value) {
+    console.log('Survey button not enabled')
+    return
+  }
+
   try {
+    // Immediately set survey initiation state for UI feedback
+    surveyInitiated.value = true
+
     const response = await fetch('http://localhost:8000/coordination/initiate-proximity-survey', {
       method: 'POST',
       headers: {
@@ -868,17 +849,75 @@ const initiateSurvey = async () => {
       throw new Error(data.message || 'Failed to initiate survey')
     }
 
-    snackbarMessage.value = 'Proximity survey initiated successfully'
+    console.log('Survey initiated successfully:', data.message)
+
+    // The backend will send WebSocket events to update the actual survey state
+    // Don't set surveyInProgress here - let the WebSocket event handle it
+
+    snackbarMessage.value = 'Survey mission initiated successfully!'
     snackbarColor.value = 'success'
     showSnackbar.value = true
 
   } catch (error) {
-    console.error('Error initiating survey:', error)
-    snackbarMessage.value = `Error initiating survey: ${error.message}`
+    console.error('Failed to initiate survey:', error)
+
+    // Reset survey state on error
+    surveyInitiated.value = false
+
+    snackbarMessage.value = `Survey initiation failed: ${error.message}`
     snackbarColor.value = 'error'
     showSnackbar.value = true
   }
 }
+// fetch coordination status
+const fetchCoordinationStatus = async () => {
+  try {
+    const response = await fetch('http://localhost:8000/coordination/status')
+    const data = await response.json()
+
+    console.log('Coordination status on load:', data)
+
+    // Update state based on backend status
+    isCoordinationActive.value = data.active
+    isDroneFollowing.value = data.following
+    surveyInProgress.value = data.surveying
+    surveyButtonEnabled.value = data.survey_button_enabled
+
+    // If survey is in progress, clear the initiation flag
+    if (data.surveying) {
+      surveyInitiated.value = false
+    }
+
+    console.log('Frontend state updated:', {
+      isCoordinationActive: isCoordinationActive.value,
+      isDroneFollowing: isDroneFollowing.value,
+      surveyInProgress: surveyInProgress.value,
+      surveyButtonEnabled: surveyButtonEnabled.value
+    })
+
+  } catch (error) {
+    console.error('Failed to fetch coordination status:', error)
+  }
+}
+
+// Update your onMounted function
+onMounted(async () => {
+  console.log('App mounted, setting up connections...')
+
+  // Fetch coordination status first
+  await fetchCoordinationStatus()
+
+  // Then setup WebSocket connections
+  connectWebSocket('drone')
+  connectWebSocket('vehicle')
+
+  // Setup connection check interval
+  connectionCheckInterval = setInterval(checkConnectionStatus, 5000)
+
+  // Initial instruction update
+  updateOperatorInstructions()
+})
+
 
 onBeforeUnmount(() => {
   if (connectionCheckInterval) {
@@ -887,17 +926,7 @@ onBeforeUnmount(() => {
   disconnectWebSocket('drone')
   disconnectWebSocket('car')
 })
-onMounted(() => {
-  // Start checking connection status periodically
-  connectionCheckInterval = setInterval(checkConnectionStatus, 1000)
 
-  // --- START OF CHANGE ---
-  // Automatically connect to WebSockets on application startup
-  console.log('Application mounted. Automatically connecting WebSockets...')
-  connectWebSocket('drone')
-  connectWebSocket('car')
-  // --- END OF CHANGE ---
-})
 </script>
 
 <style scoped>

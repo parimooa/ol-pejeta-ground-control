@@ -1,7 +1,6 @@
-
 <template>
   <div class="map-container">
-    <div ref="mapElement" class="map" />
+    <div ref="mapElement" class="map"/>
 
     <div class="map-controls">
       <!-- Map Type Toggle -->
@@ -58,21 +57,77 @@
         </div>
       </div>
 
-      <!-- Coordination Controls -->
-   <div class="coordination-controls pa-2">
-        <div class="toggle-wrapper">
-          <v-btn
-            :loading="coordinationLoading"
-            :color="props.isCoordinationActive ? 'red' : 'green'"
-            variant="outlined"
-            size="small"
-            :prepend-icon="props.isCoordinationActive ? 'mdi-sync-off' : 'mdi-sync'"
-            @click="toggleCoordination"
-          >
-            {{ props.isCoordinationActive ? 'Coordination Off' : 'Coordination On' }}
-          </v-btn>
+      <div class="coordination-controls pa-2">
+        <div class="d-flex gap-2">
+          <div class="toggle-wrapper">
+            <v-btn
+              size="small"
+              color="success"
+              variant="outlined"
+              :disabled="props.isCoordinationActive || coordinationLoading"
+              :loading="coordinationLoading && !props.isCoordinationActive"
+              @click="startCoordination"
+            >
+              <v-icon>mdi-play</v-icon>
+              <span class="ml-1">Start Coordination</span>
+            </v-btn>
+          </div>
+
+          <div class="toggle-wrapper">
+            <v-btn
+              size="small"
+              color="error"
+              variant="outlined"
+              :disabled="!props.isCoordinationActive || coordinationLoading"
+              :loading="coordinationLoading && props.isCoordinationActive"
+              @click="showStopConfirmation = true"
+            >
+              <v-icon>mdi-stop</v-icon>
+              <span class="ml-1">Stop Coordination</span>
+            </v-btn>
+          </div>
         </div>
       </div>
+
+      <!-- Stop Coordination Confirmation Dialog -->
+      <v-dialog v-model="showStopConfirmation" max-width="400" persistent>
+        <v-card>
+          <v-card-title class="text-h6 font-weight-bold">
+            <v-icon color="warning" class="mr-2">mdi-alert</v-icon>
+            Confirm Stop Coordination
+          </v-card-title>
+
+          <v-card-text>
+            <p class="text-body-1">
+              Are you sure you want to stop the coordination service? This will:
+            </p>
+            <ul class="text-body-2 mt-2">
+              <li>Stop autonomous vehicle following</li>
+              <li>Disable proximity survey features</li>
+              <li>Return control to manual mode</li>
+            </ul>
+          </v-card-text>
+
+          <v-card-actions class="px-4 pb-4">
+            <v-spacer></v-spacer>
+            <v-btn
+              color="primary"
+              variant="outlined"
+              @click="showStopConfirmation = false"
+              :disabled="coordinationLoading"
+            >
+              Cancel
+            </v-btn>
+            <v-btn
+              color="error"
+              @click="stopCoordination"
+              :loading="coordinationLoading"
+            >
+              Stop Coordination
+            </v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
 
 
       <!-- Offline Map Controls -->
@@ -312,19 +367,19 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import {computed, onMounted, onUnmounted, ref, watch} from 'vue'
 import Map from 'ol/Map'
 import View from 'ol/View'
 import TileLayer from 'ol/layer/Tile'
-import { fromLonLat, toLonLat } from 'ol/proj'
+import {fromLonLat, toLonLat} from 'ol/proj'
 import Feature from 'ol/Feature'
 import Point from 'ol/geom/Point'
 import LineString from 'ol/geom/LineString'
 import Polygon from 'ol/geom/Polygon'
 import Circle from 'ol/geom/Circle'
-import { Vector as VectorLayer } from 'ol/layer'
-import { Vector as VectorSource } from 'ol/source'
-import { Circle as CircleStyle, Fill, Icon, Stroke, Style, Text } from 'ol/style'
+import {Vector as VectorLayer} from 'ol/layer'
+import {Vector as VectorSource} from 'ol/source'
+import {Circle as CircleStyle, Fill, Icon, Stroke, Style, Text} from 'ol/style'
 import * as ol from 'ol/extent'
 
 import droneIcon from '@/assets/drone.png'
@@ -332,22 +387,22 @@ import vehicleIcon from '@/assets/car_top_view.png'
 
 // Import offline map utilities
 import {
+  addConnectivityListeners,
+  clearTiles,
+  countTiles,
   createOfflineOSMSource,
   createOfflineXYZSource,
   downloadMapTiles,
-  countTiles,
-  clearTiles,
   isOffline,
-  addConnectivityListeners,
   removeConnectivityListeners
 } from '@/utils/OfflineMapUtils'
 
 // Import survey file utilities
 import {
-  generateSurveyFilename,
   findClosestWaypoint,
-  saveSurveyToFile,
-  loadSurveysFromFiles
+  generateSurveyFilename,
+  loadSurveysFromFiles,
+  saveSurveyToFile
 } from '@/utils/SurveyFileUtils'
 
 const props = defineProps({
@@ -436,9 +491,9 @@ let completedSurveyLayer = null
 let hasAutoFittedWaypoints = false
 
 // State variables
-const currentPosition = ref({ lat: 0.0078, lng: 36.9759 })
-const dronePosition = ref({ x: 0, y: 0 })
-const vehiclePosition = ref({ x: 0, y: 0 })
+const currentPosition = ref({lat: 0.0078, lng: 36.9759})
+const dronePosition = ref({x: 0, y: 0})
+const vehiclePosition = ref({x: 0, y: 0})
 const coordinationLoading = ref(false)
 
 const manualControl = ref(true)
@@ -450,9 +505,9 @@ const followDrone = ref(false)
 const isDeviceOffline = ref(isOffline())
 const showOfflineDialog = ref(false)
 const downloadProgress = ref({
-  osm: { current: 0, total: 0, percentage: 0 },
-  satellite: { current: 0, total: 0, percentage: 0 },
-  hybrid: { current: 0, total: 0, percentage: 0 }
+  osm: {current: 0, total: 0, percentage: 0},
+  satellite: {current: 0, total: 0, percentage: 0},
+  hybrid: {current: 0, total: 0, percentage: 0}
 })
 const isDownloading = ref(false)
 const downloadingMapType = ref('')
@@ -485,24 +540,74 @@ const isManualControlEnabled = computed(() => {
   return manualControl.value && !props.isDroneConnected && !props.isVehicleConnected
 })
 
+
 // Coordination functions
-const toggleCoordination = async () => {
+// Add to existing state variables
+
+
+const showStopConfirmation = ref(false)
+
+const startCoordination = async () => {
+  if (coordinationLoading.value) return
+
   coordinationLoading.value = true
-  const action = props.isCoordinationActive ? 'stop' : 'start'
   try {
-    const response = await fetch(`http://localhost:8000/coordination/${action}`, { method: 'POST' })
-    if (!response.ok) {
-      const errorData = await response.json()
-      console.error(`Failed to ${action} coordination:`, errorData.detail || response.statusText)
-    } else {
-      console.log(`Coordination ${action} requested successfully.`)
-    }
+    const response = await fetch('http://localhost:8000/coordination/start', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      }
+    })
+
+    const data = await validateApiResponse(response)
+    console.log('Coordination started:', data.message)
+
   } catch (error) {
-    console.error(`Error during coordination ${action}:`, error)
+    console.error('Failed to start coordination:', error.message)
   } finally {
     coordinationLoading.value = false
   }
 }
+
+const stopCoordination = async () => {
+  if (coordinationLoading.value) return
+
+  coordinationLoading.value = true
+  showStopConfirmation.value = false
+
+  try {
+    const response = await fetch('http://localhost:8000/coordination/stop', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      }
+    })
+
+    const data = await validateApiResponse(response)
+    console.log('Coordination stopped:', data.message)
+
+  } catch (error) {
+    console.error('Failed to stop coordination:', error.message)
+  } finally {
+    coordinationLoading.value = false
+  }
+}
+const validateApiResponse = async (response) => {
+  const data = await response.json()
+
+  if (!response.ok) {
+    throw new Error(data.message || 'Request failed')
+  }
+
+  if (data.status !== 'success') {
+    throw new Error(data.message || 'Operation failed')
+  }
+
+  return data
+}
+
 
 // Offline map functions
 const updateOfflineTileCounts = async () => {
@@ -527,7 +632,7 @@ const downloadOfflineMapTiles = async (type) => {
   if (isDownloading.value) return
   isDownloading.value = true
   downloadingMapType.value = type
-  downloadProgress.value[type] = { current: 0, total: 0, percentage: 0 }
+  downloadProgress.value[type] = {current: 0, total: 0, percentage: 0}
 
   try {
     const view = map.getView()
@@ -596,24 +701,24 @@ const centerMapOnDrone = (coordinates) => {
 const updateDroneFromTelemetry = () => {
   if (!dronePositionAvailable.value || !droneFeature) return
 
-  const { latitude, longitude } = props.droneTelemetryData.position
+  const {latitude, longitude} = props.droneTelemetryData.position
   const mapCoords = gpsToMapCoordinates(latitude, longitude)
-  dronePosition.value = { x: mapCoords[0], y: mapCoords[1] }
+  dronePosition.value = {x: mapCoords[0], y: mapCoords[1]}
 
   if (followDrone.value && !isUserInteracting) {
     centerMapOnDrone(mapCoords)
   }
   updateMapFeatures()
-  emit('update:drone-position', { lat: latitude, lon: longitude })
+  emit('update:drone-position', {lat: latitude, lon: longitude})
 }
 
 const updateVehicleFromTelemetry = () => {
   if (!vehiclePositionAvailable.value || !vehicleFeature) return
 
-  const { latitude, longitude } = props.vehicleTelemetryData.position
+  const {latitude, longitude} = props.vehicleTelemetryData.position
   const heading = props.vehicleTelemetryData.velocity.heading
   const mapCoords = gpsToMapCoordinates(latitude, longitude)
-  vehiclePosition.value = { x: mapCoords[0], y: mapCoords[1] }
+  vehiclePosition.value = {x: mapCoords[0], y: mapCoords[1]}
   vehicleFeature.getGeometry().setCoordinates(mapCoords)
 
   if (heading !== undefined && heading !== null) {
@@ -628,7 +733,7 @@ const updateVehicleFromTelemetry = () => {
     centerMapOnVehicle(mapCoords)
   }
   updateMapFeatures()
-  emit('update:vehicle-position', { lat: latitude, lon: longitude })
+  emit('update:vehicle-position', {lat: latitude, lon: longitude})
 }
 
 const updateMapFeatures = () => {
@@ -669,33 +774,33 @@ const updateWaypointsOnMap = (waypointsObj) => {
     const coord = fromLonLat([waypoint.lon, waypoint.lat])
     coordinates.push(coord)
 
-    const feature = new Feature({ geometry: new Point(coord), waypoint: waypoint })
+    const feature = new Feature({geometry: new Point(coord), waypoint: waypoint})
     feature.setStyle(new Style({
       image: new CircleStyle({
         radius: 15,
-        fill: new Fill({ color: '#ff6b35' }),
-        stroke: new Stroke({ color: 'white', width: 2 })
+        fill: new Fill({color: '#ff6b35'}),
+        stroke: new Stroke({color: 'white', width: 2})
       }),
       text: new Text({
         text: (waypoint.seq + 1).toString(),
         font: 'bold 12px Arial',
-        fill: new Fill({ color: 'white' })
+        fill: new Fill({color: 'white'})
       })
     }))
     waypointSource.addFeature(feature)
   })
 
   if (coordinates.length > 1) {
-    const routeFeature = new Feature({ geometry: new LineString(coordinates) })
+    const routeFeature = new Feature({geometry: new LineString(coordinates)})
     routeFeature.setStyle(new Style({
-      stroke: new Stroke({ color: '#ff6b35', width: 3, lineDash: [5, 5] })
+      stroke: new Stroke({color: '#ff6b35', width: 3, lineDash: [5, 5]})
     }))
     routeSource.addFeature(routeFeature)
 
     if (!hasAutoFittedWaypoints) {
       const extent = routeSource.getExtent()
       if (extent && !ol.isEmpty(extent)) {
-        map.getView().fit(extent, { padding: [50, 50, 50, 50], duration: 500 })
+        map.getView().fit(extent, {padding: [50, 50, 50, 50], duration: 500})
         hasAutoFittedWaypoints = true
       }
     }
@@ -778,12 +883,12 @@ const saveSurveyedArea = async (waypoints, vehicleId) => {
 
     const surveyData = {
       id: surveyId,
-      waypoints: waypoints.map(wp => ({ lat: wp.lat, lon: wp.lon, seq: wp.seq })),
+      waypoints: waypoints.map(wp => ({lat: wp.lat, lon: wp.lon, seq: wp.seq})),
       vehicleId: String(vehicleId) || 'unknown',
       completedAt: timestamp.toISOString(),
       siteName: siteName,
       closestWaypoint: closestWaypointNum,
-      }
+    }
 
     // Try to save to file system first
     try {
@@ -860,8 +965,8 @@ const displayCompletedSurvey = (waypoints) => {
 
   // A valid polygon needs at least 3 unique points to form an area.
   if (hullCoordinates.length < 3) {
-      console.warn("Not enough unique points to form a valid survey area polygon.");
-      return;
+    console.warn("Not enough unique points to form a valid survey area polygon.");
+    return;
   }
 
   // Close the polygon shape by adding the first point to the end of the array
@@ -1012,8 +1117,8 @@ const initializeFeatures = () => {
   distanceLabelFeature.setStyle(new Style({
     text: new Text({
       text: '0m',
-      fill: new Fill({ color: 'white' }),
-      stroke: new Stroke({ color: 'rgba(142, 68, 173, 0.8)', width: 5 }),
+      fill: new Fill({color: 'white'}),
+      stroke: new Stroke({color: 'rgba(142, 68, 173, 0.8)', width: 5}),
       font: '12px sans-serif',
       padding: [3, 5, 3, 5],
     }),
@@ -1123,7 +1228,9 @@ const initMap = () => {
   })
 
   map.on('pointerup', () => {
-    setTimeout(() => { isUserInteracting = false }, 1000)
+    setTimeout(() => {
+      isUserInteracting = false
+    }, 1000)
   })
 
   map.on('movestart', (evt) => {
@@ -1135,14 +1242,16 @@ const initMap = () => {
   })
 
   map.on('moveend', () => {
-    setTimeout(() => { isUserInteracting = false }, 500)
+    setTimeout(() => {
+      isUserInteracting = false
+    }, 500)
   })
 }
 
 
 // Watchers
-watch(() => props.droneTelemetryData, updateDroneFromTelemetry, { deep: true })
-watch(() => props.vehicleTelemetryData, updateVehicleFromTelemetry, { deep: true })
+watch(() => props.droneTelemetryData, updateDroneFromTelemetry, {deep: true})
+watch(() => props.vehicleTelemetryData, updateVehicleFromTelemetry, {deep: true})
 watch(() => props.distance, updateMapFeatures)
 watch(() => props.isDroneFollowing, () => vectorSource?.changed())
 watch(() => props.vehicleWaypoints, (waypoints) => {
@@ -1151,19 +1260,43 @@ watch(() => props.vehicleWaypoints, (waypoints) => {
   } else {
     clearWaypoints()
   }
-}, { deep: true })
-
+}, {deep: true})
 watch(followVehicle, (isFollowing) => {
-  if (isFollowing && vehiclePositionAvailable.value) {
-    centerMapOnVehicle(gpsToMapCoordinates(props.vehicleTelemetryData.position.latitude, props.vehicleTelemetryData.position.longitude))
+  // `isFollowing` will be `true` when the button is activated.
+  if (isFollowing) {
+    // When 'Follow Vehicle' is turned on, turn 'Follow Drone' off.
+    followDrone.value = false;
+
+    // Also, center the map on the vehicle as before.
+    if (vehiclePositionAvailable.value) {
+      centerMapOnVehicle(
+        gpsToMapCoordinates(
+          props.vehicleTelemetryData.position.latitude,
+          props.vehicleTelemetryData.position.longitude
+        )
+      );
+    }
   }
-})
+});
 
 watch(followDrone, (isFollowing) => {
-  if (isFollowing && dronePositionAvailable.value) {
-    centerMapOnDrone(gpsToMapCoordinates(props.droneTelemetryData.position.latitude, props.droneTelemetryData.position.longitude))
+  // `isFollowing` will be `true` when the button is activated.
+  if (isFollowing) {
+    // When 'Follow Drone' is turned on, turn 'Follow Vehicle' off.
+    followVehicle.value = false;
+
+    // Also, center the map on the drone as before.
+    if (dronePositionAvailable.value) {
+      centerMapOnDrone(
+        gpsToMapCoordinates(
+          props.droneTelemetryData.position.latitude,
+          props.droneTelemetryData.position.longitude
+        )
+      );
+    }
   }
-})
+});
+
 
 // Survey grid management - show grid when waypoints exist, hide when cleared
 watch(() => props.droneMissionWaypoints, (waypoints) => {
@@ -1172,7 +1305,7 @@ watch(() => props.droneMissionWaypoints, (waypoints) => {
   } else if (surveyGridSource) {
     surveyGridSource.clear();
   }
-}, { deep: true, immediate: true });
+}, {deep: true, immediate: true});
 
 // Survey completion handler - save completed survey and show as green polygon
 watch(() => props.surveyComplete, (isComplete, wasComplete) => {

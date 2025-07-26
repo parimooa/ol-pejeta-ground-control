@@ -5,6 +5,7 @@ import math
 from backend.models.vehicle import Vehicle
 from backend.core.flight_modes import FlightMode
 from backend.config import get_vehicle_settings
+from backend.services.waypoint_file_service import waypoint_file_service
 
 
 class VehicleService:

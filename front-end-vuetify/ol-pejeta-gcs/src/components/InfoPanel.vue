@@ -9,6 +9,10 @@
 
     <div class="pa-1">
 
+      <OperatorInstructionsCard
+        :instruction-card="instructionCard"
+        :instructions="instructions"
+      />
       <VehicleStatusCard
         :vehicle-telemetry-data="vehicleTelemetryData"
         :vehicle-location="vehicleLocation"
@@ -23,10 +27,7 @@
         :status="status"
         :status-color="statusColor"
       />
-      <OperatorInstructionsCard
-        :instruction-card="instructionCard"
-        :instructions="instructions"
-      />
+
       <DroneStatusCard
         :telemetry-data="droneTelemetryData"
       />

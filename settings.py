@@ -1,3 +1,6 @@
+# Site configuration
+site_name = "ol-pejeta"
+
 vehicle_settings = [
     {
         "type": "drone",

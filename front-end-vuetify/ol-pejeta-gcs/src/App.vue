@@ -71,8 +71,6 @@
         </v-tab>
       </v-tabs>
     </v-app-bar>
-
-
     <InfoPanel
       :distance="distance"
       :drone-telemetry-data="droneData"
@@ -86,7 +84,6 @@
       :vehicle-telemetry-data="vehicleData"
       @initiate-survey="initiateSurvey"
     />
-
     <v-main>
       <div class="d-flex drone-tracking-container">
         <MapContainer
@@ -102,10 +99,11 @@
           :vehicle-telemetry-data="vehicleData"
           :vehicle-waypoints="vehicleData.mission.mission_waypoints"
           class="flex-grow-1"
+            @coordination-status="handleCoordinationStatus"
+
         />
       </div>
     </v-main>
-
     <v-snackbar
       v-model="showSnackbar"
       :color="snackbarColor"
@@ -223,7 +221,7 @@ const waypointReached = ref(false)
 // WebSocket connections
 const wsConnections = reactive({
   drone: null,
-  vehicle: null,
+  car: null,
 })
 const wsReconnectAttempts = ref(0)
 const maxReconnectAttempts = 5
@@ -242,6 +240,11 @@ const surveyState = reactive({
 const instructionType = ref('info')
 const surveyInitiated = ref(false)
 
+const handleCoordinationStatus = (event) => {
+  showSnackbar.value = true
+  snackbarMessage.value = event.message
+  snackbarColor.value = event.type === 'success' ? 'success' : 'error'
+}
 
 // Add computed property for survey completion
 const isSurveyComplete = computed(() => surveyState.isComplete)
@@ -330,7 +333,7 @@ const getDroneOperationalContext = () => {
 
 // Enhanced function to update operator instructions based on car/vehicle telemetry
 const updateOperatorInstructions = () => {
-  if (!isVehicleConnected.value) {
+  if (!isVehicleConnected.value && !surveyInitiated.value) {
     instructions.value = '⚠️ VEHICLE NOT CONNECTED: Please connect the ground vehicle to receive mission instructions.'
     instructionType.value = 'warning'
     return // Exit early, as no other instructions are relevant.
@@ -442,7 +445,7 @@ const updateOperatorInstructions = () => {
     instructions.value = instruction
     return
 
-  } else if (vehicleSpeed > 2 && !waypointReached.value) {
+  } else if (vehicleSpeed > 2 && !waypointReached.value && !isDroneFollowing) {
     instruction = '🛑 SLOW DOWN: Approaching waypoint. Drone may start survey here. Reduce speed.'
     instructionType.value = 'action'
   } else if (waypointReached.value && !surveyInitiated.value) {
@@ -909,7 +912,7 @@ onMounted(async () => {
 
   // Then setup WebSocket connections
   connectWebSocket('drone')
-  connectWebSocket('vehicle')
+  connectWebSocket('car')
 
   // Setup connection check interval
   connectionCheckInterval = setInterval(checkConnectionStatus, 5000)

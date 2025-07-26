@@ -456,6 +456,8 @@ const emit = defineEmits([
   'update:current-position',
   'update:drone-position',
   'update:vehicle-position',
+  'coordination-status'
+
 ])
 
 const mapElement = ref(null)
@@ -540,35 +542,48 @@ const isManualControlEnabled = computed(() => {
   return manualControl.value && !props.isDroneConnected && !props.isVehicleConnected
 })
 
-
-// Coordination functions
-// Add to existing state variables
-
-
 const showStopConfirmation = ref(false)
 
 const startCoordination = async () => {
-  if (coordinationLoading.value) return
-
   coordinationLoading.value = true
+
   try {
     const response = await fetch('http://localhost:8000/coordination/start', {
       method: 'POST',
       headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json'
       }
     })
 
-    const data = await validateApiResponse(response)
-    console.log('Coordination started:', data.message)
+    if (!response.ok) {
+      throw new Error(`Failed to start coordination: ${response.status} ${response.statusText}`)
+    }
+
+    const data = await response.json()
+
+    if (data.status === 'success') {
+      // Emit success event to parent component for snackbar
+      emit('coordination-status', {
+        type: 'success',
+        message: 'Coordination service started successfully'
+      })
+    } else {
+      throw new Error(data.message || 'Failed to start coordination service')
+    }
 
   } catch (error) {
-    console.error('Failed to start coordination:', error.message)
+    console.error('Coordination start error:', error)
+
+    // Emit error event to parent component for snackbar
+    emit('coordination-status', {
+      type: 'error',
+      message: `Unable to start coordination: ${error.message.includes('fetch') ? 'Backend service unavailable' : error.message}`
+    })
   } finally {
     coordinationLoading.value = false
   }
 }
+
 
 const stopCoordination = async () => {
   if (coordinationLoading.value) return

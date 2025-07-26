@@ -6,6 +6,7 @@ from typing import Dict, Optional, Any
 from pymavlink import mavutil, mavwp
 
 from backend.core.flight_modes import FlightMode
+from backend.services.waypoint_file_service import waypoint_file_service
 
 
 class Vehicle:
@@ -45,6 +46,7 @@ class Vehicle:
         self.waypoint_confirmation_delay = 2.0  # seconds
         self._survey_mission_complete = False
         self.last_waypoint_seq = -1
+        self.current_site_name = None  # Site name for waypoint persistence
 
         # State management for telemetry
         self._lock = threading.Lock()
@@ -268,6 +270,35 @@ class Vehicle:
         else:
             print("No vehicle connected to disconnect.")
 
+    def set_site_name(self, site_name: str):
+        """Set the current site name for waypoint persistence."""
+        self.current_site_name = site_name
+        print(f"Site name set to: {site_name}")
+        
+        # Load previously visited waypoints for this site if they exist
+        if site_name:
+            self.load_previous_visited_waypoints()
+
+    def load_previous_visited_waypoints(self):
+        """Load previously visited waypoints from disk for the current site."""
+        if not self.current_site_name:
+            return
+            
+        try:
+            previous_waypoints = waypoint_file_service.load_visited_waypoints(
+                self.current_site_name, str(self.vehicle_id)
+            )
+            
+            if previous_waypoints:
+                self.visited_waypoints.update(previous_waypoints)
+                print(f"Loaded {len(previous_waypoints)} previously visited waypoints")
+                self._update_current_next_waypoints()
+            else:
+                print("No previous waypoint data found for this site")
+                
+        except Exception as e:
+            print(f"Error loading previous waypoint data: {e}")
+
     def fetch_mission_waypoints(self):
         """Fetch all mission waypoints for visit detection."""
         if not self.vehicle:
@@ -307,6 +338,10 @@ class Vehicle:
             print(
                 f"Loaded {len(self.mission_waypoints)} waypoints for visit detection."
             )
+            
+            # Load previously visited waypoints after fetching mission
+            if self.current_site_name:
+                self.load_previous_visited_waypoints()
 
         except Exception as e:
             print(f"Error fetching mission waypoints: {e}")
@@ -705,6 +740,10 @@ class Vehicle:
         """Updates the last_telemetry dictionary based on an incoming MAVLink message."""
         if msg_type == "MISSION_ITEM_REACHED":
             print(f"MISSION_ITEM_REACHED: Waypoint sequence {msg.seq} reached.")
+            
+            # Save waypoint to persistent storage immediately
+            self._save_waypoint_to_file(msg.seq)
+            
             # Check if the reached waypoint is the last one of the survey pattern
             if self.last_waypoint_seq != -1 and msg.seq >= self.last_waypoint_seq:
                 print(
@@ -899,6 +938,10 @@ class Vehicle:
                     print(
                         f"🎯 Waypoint {wp_seq} visited! Distance: {distance:.2f}m, Current: {self.current_waypoint_seq}, Next: {self.next_waypoint_seq}"
                     )
+                    
+                    # Save waypoint to persistent storage
+                    self._save_waypoint_to_file(wp_seq)
+                    
                     del self._waypoint_visit_candidates[wp_seq]
             else:
                 if (
@@ -906,6 +949,27 @@ class Vehicle:
                     and wp_seq in self._waypoint_visit_candidates
                 ):
                     del self._waypoint_visit_candidates[wp_seq]
+
+    def _save_waypoint_to_file(self, waypoint_seq: int):
+        """Save a visited waypoint to persistent storage (only for car vehicles)."""
+        # Only save waypoints for car vehicles
+        if self.vehicle_type != "car":
+            return
+            
+        if not self.current_site_name:
+            print(f"Warning: Cannot save waypoint {waypoint_seq} - no site name set")
+            return
+            
+        try:
+            success = waypoint_file_service.update_visited_waypoint(
+                self.current_site_name, str(self.vehicle_id), waypoint_seq
+            )
+            if success:
+                print(f"💾 Waypoint {waypoint_seq} saved to disk for site {self.current_site_name}")
+            else:
+                print(f"⚠️ Failed to save waypoint {waypoint_seq} to disk")
+        except Exception as e:
+            print(f"Error saving waypoint {waypoint_seq}: {e}")
 
     def _calculate_distance(self, lat1, lon1, lat2, lon2):
         """Calculate the distance between two GPS coordinates using Haversine formula."""

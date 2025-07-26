@@ -8,6 +8,11 @@ from backend.core.flight_modes import FlightMode
 from backend.services.vehicle_service import vehicle_service
 from backend.services.survey_service import survey_service
 
+try:
+    from settings import site_name as configured_site_name
+except ImportError:
+    configured_site_name = "ol-pejeta"  # Default fallback
+
 
 class CoordinationService:
     if TYPE_CHECKING:
@@ -29,9 +34,11 @@ class CoordinationService:
         self._survey_initiated_by_user = (
             False  # Track if we initiated the current survey
         )
+        self.current_site_name = configured_site_name  # Site name from settings for waypoint persistence
 
-    def _calculate_distance(self, pos1, pos2) -> float:
-        """Calculate distance between two GPS coordinates using Haversine formula."""
+    @staticmethod
+    def _calculate_distance(pos1, pos2) -> float:
+        """Calculate the distance between two GPS coordinates using Haversine formula."""
         if not pos1.get("latitude") or not pos2.get("latitude"):
             return -1
 
@@ -73,10 +80,9 @@ class CoordinationService:
 
         # Determine if survey button should be enabled
         should_enable = (
-            distance <= self.proximity_threshold
-            and distance > 0
-            and not self._survey_mode_detected
-            and self._is_following
+                self.proximity_threshold >= distance > 0
+                and not self._survey_mode_detected
+                and self._is_following
         )
 
         # Only broadcast if state changed
@@ -355,10 +361,27 @@ class CoordinationService:
 
         return success
 
+    def set_site_name(self, site_name: str):
+        """Set the current site name for waypoint persistence across all vehicles."""
+        self.current_site_name = site_name
+        print(f"Site name set to: {site_name}")
+        
+        # Update all connected vehicles with the new site name
+        for vehicle_type in ["drone", "car"]:
+            vehicle = vehicle_service.get_vehicle(vehicle_type)
+            if vehicle:
+                vehicle.set_site_name(site_name)
+
     def start(self):
         if self._is_active:
             print("Coordination service is already active.")
             return False
+
+        # Ensure all vehicles have the current site name set
+        for vehicle_type in ["drone", "car"]:
+            vehicle = vehicle_service.get_vehicle(vehicle_type)
+            if vehicle:
+                vehicle.set_site_name(self.current_site_name)
 
         self._stop_event.clear()
         self._thread = threading.Thread(target=self._coordination_loop, daemon=True)

@@ -29,7 +29,6 @@ class MissionStatus(BaseModel):
     distance_to_wp: Optional[float] = None
     progress_percentage: Optional[float] = None
     total_waypoints: Optional[int] = None
-    mission_waypoints: Optional[Dict[int, Any]] = None
     visited_waypoints: Optional[List[int]] = None
 
 
@@ -79,7 +78,6 @@ class TelemetryData(BaseModel):
                 distance_to_wp=data.get("distance_to_mission_wp"),
                 progress_percentage=data.get("mission_progress_percentage"),
                 total_waypoints=data.get("mission_total_waypoints"),
-                mission_waypoints=data.get("mission_waypoints"),
                 visited_waypoints=data.get("visited_waypoints"),
             ),
             heartbeat=Heartbeat(

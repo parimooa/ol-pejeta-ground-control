@@ -58,23 +58,27 @@ class WaypointFileService:
             print(f"Error loading waypoints from {filename}: {e}")
             return set()
 
-    def update_visited_waypoint(self, site_name: str, vehicle_id: str, waypoint_seq: int) -> bool:
+    def update_visited_waypoint(
+        self, site_name: str, vehicle_id: str, waypoint_seq: int
+    ) -> bool:
         """Add a single waypoint to the visited list and save incrementally"""
         if not site_name:
             print("Warning: Cannot save waypoint without site name")
             return False
-            
+
         # Load existing waypoints
         visited_waypoints = self.load_visited_waypoints(site_name, vehicle_id)
-        
+
         # Add new waypoint if not already visited
         if waypoint_seq not in visited_waypoints:
             visited_waypoints.add(waypoint_seq)
-            
+
             # Save updated list
             try:
                 self.save_visited_waypoints(site_name, vehicle_id, visited_waypoints)
-                print(f"Waypoint {waypoint_seq} saved for vehicle {vehicle_id} at site {site_name}")
+                print(
+                    f"Waypoint {waypoint_seq} saved for vehicle {vehicle_id} at site {site_name}"
+                )
                 return True
             except Exception as e:
                 print(f"Failed to save waypoint {waypoint_seq}: {e}")
@@ -83,11 +87,13 @@ class WaypointFileService:
             print(f"Waypoint {waypoint_seq} already visited")
             return True
 
-    def get_current_visited_file(self, site_name: str, vehicle_id: str) -> Optional[str]:
+    def get_current_visited_file(
+        self, site_name: str, vehicle_id: str
+    ) -> Optional[str]:
         """Get the path to the visited waypoints file"""
         filename = self.generate_waypoint_filename(site_name, vehicle_id)
         file_path = self.base_dir / filename
-        
+
         if file_path.exists():
             return str(file_path)
         return None

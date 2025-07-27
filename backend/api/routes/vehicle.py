@@ -156,3 +156,16 @@ async def arm_vehicle_by_type(vehicle_type: str):
             status_code=500,
             detail=f"Failed to arm {vehicle_type}. Check backend logs for details.",
         )
+
+
+@router.get("/{vehicle_type}/mission/waypoints")
+async def get_mission_waypoints(vehicle_type: str):
+    """Get mission waypoints separately from telemetry."""
+    vehicle = vehicle_service.get_vehicle(vehicle_type)
+    if not vehicle:
+        raise HTTPException(status_code=404, detail=f"Vehicle {vehicle_type} not found")
+
+    return {
+        "mission_waypoints": vehicle.mission_waypoints,
+        "total_waypoints": vehicle.mission_total_waypoints,
+    }

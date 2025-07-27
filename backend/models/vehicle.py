@@ -274,7 +274,7 @@ class Vehicle:
         """Set the current site name for waypoint persistence."""
         self.current_site_name = site_name
         print(f"Site name set to: {site_name}")
-        
+
         # Load previously visited waypoints for this site if they exist
         if site_name:
             self.load_previous_visited_waypoints()
@@ -283,19 +283,19 @@ class Vehicle:
         """Load previously visited waypoints from disk for the current site."""
         if not self.current_site_name:
             return
-            
+
         try:
             previous_waypoints = waypoint_file_service.load_visited_waypoints(
                 self.current_site_name, str(self.vehicle_id)
             )
-            
+
             if previous_waypoints:
                 self.visited_waypoints.update(previous_waypoints)
                 print(f"Loaded {len(previous_waypoints)} previously visited waypoints")
                 self._update_current_next_waypoints()
             else:
                 print("No previous waypoint data found for this site")
-                
+
         except Exception as e:
             print(f"Error loading previous waypoint data: {e}")
 
@@ -338,7 +338,7 @@ class Vehicle:
             print(
                 f"Loaded {len(self.mission_waypoints)} waypoints for visit detection."
             )
-            
+
             # Load previously visited waypoints after fetching mission
             if self.current_site_name:
                 self.load_previous_visited_waypoints()
@@ -740,10 +740,10 @@ class Vehicle:
         """Updates the last_telemetry dictionary based on an incoming MAVLink message."""
         if msg_type == "MISSION_ITEM_REACHED":
             print(f"MISSION_ITEM_REACHED: Waypoint sequence {msg.seq} reached.")
-            
+
             # Save waypoint to persistent storage immediately
             self._save_waypoint_to_file(msg.seq)
-            
+
             # Check if the reached waypoint is the last one of the survey pattern
             if self.last_waypoint_seq != -1 and msg.seq >= self.last_waypoint_seq:
                 print(
@@ -806,7 +806,6 @@ class Vehicle:
 
         # Add waypoint data to every packet for consistency
         self.last_telemetry["mission_total_waypoints"] = len(self.mission_waypoints)
-        self.last_telemetry["mission_waypoints"] = self.mission_waypoints
         self.last_telemetry["visited_waypoints"] = list(self.visited_waypoints)
 
         # Recalculate mission progress based on custom visit detection
@@ -938,10 +937,10 @@ class Vehicle:
                     print(
                         f"🎯 Waypoint {wp_seq} visited! Distance: {distance:.2f}m, Current: {self.current_waypoint_seq}, Next: {self.next_waypoint_seq}"
                     )
-                    
+
                     # Save waypoint to persistent storage
                     self._save_waypoint_to_file(wp_seq)
-                    
+
                     del self._waypoint_visit_candidates[wp_seq]
             else:
                 if (
@@ -955,17 +954,19 @@ class Vehicle:
         # Only save waypoints for car vehicles
         if self.vehicle_type != "car":
             return
-            
+
         if not self.current_site_name:
             print(f"Warning: Cannot save waypoint {waypoint_seq} - no site name set")
             return
-            
+
         try:
             success = waypoint_file_service.update_visited_waypoint(
                 self.current_site_name, str(self.vehicle_id), waypoint_seq
             )
             if success:
-                print(f"💾 Waypoint {waypoint_seq} saved to disk for site {self.current_site_name}")
+                print(
+                    f"💾 Waypoint {waypoint_seq} saved to disk for site {self.current_site_name}"
+                )
             else:
                 print(f"⚠️ Failed to save waypoint {waypoint_seq} to disk")
         except Exception as e:

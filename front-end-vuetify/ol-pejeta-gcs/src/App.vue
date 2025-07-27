@@ -97,9 +97,9 @@
           :is-vehicle-connected="isVehicleConnected"
           :survey-complete="isSurveyComplete"
           :vehicle-telemetry-data="vehicleData"
-          :vehicle-waypoints="vehicleData.mission.mission_waypoints"
+          :vehicle-waypoints="Object.values(missionWaypoints.car || {})"
           class="flex-grow-1"
-            @coordination-status="handleCoordinationStatus"
+          @coordination-status="handleCoordinationStatus"
 
         />
       </div>
@@ -156,7 +156,6 @@ const droneData = reactive({
     distance_to_wp: 0,
     progress_percentage: 0,
     total_waypoints: 0,
-    mission_waypoints: {},
   },
   heartbeat: {
     timestamp: null,
@@ -193,7 +192,6 @@ const vehicleData = reactive({
     distance_to_wp: 0,
     progress_percentage: 0,
     total_waypoints: 0,
-    mission_waypoints: {}, // <--
     visited_waypoints: [],   // <--
   },
   heartbeat: {
@@ -256,19 +254,32 @@ const isDroneSurveying = computed(() => {
 
 // Get current mission waypoints from drone telemetry
 const currentMissionWaypoints = computed(() => {
-  const waypoints = droneData.mission.mission_waypoints || {}
-  const mappedWaypoints = Object.values(waypoints).map(wp => ({
+  const waypoints = missionWaypoints.drone || {}
+  return Object.values(waypoints).map(wp => ({
     lat: wp.lat,
     lon: wp.lon,
     seq: wp.seq
   }))
-
-
-  return mappedWaypoints
 })
+
 
 // Vehicle info derived from telemetry data
 const vehicleLocation = ref('Site Ol Pejeta')
+const missionWaypoints = reactive({
+  drone: {},
+  car: {}
+})
+
+// Function to fetch mission waypoints separately
+const fetchMissionWaypoints = async (vehicleType) => {
+  try {
+    const response = await fetch(`http://localhost:8000/vehicles/${vehicleType}/mission/waypoints`)
+    const data = await response.json()
+    missionWaypoints[vehicleType] = data.mission_waypoints || {}
+  } catch (error) {
+    console.error(`Error fetching mission waypoints for ${vehicleType}:`, error)
+  }
+}
 
 // Instructions and mission steps
 const instructions = ref('Vehicle position is currently safe. Maintain current position during drone operation.')
@@ -348,7 +359,8 @@ const updateOperatorInstructions = () => {
   const missionData = vehicleData.mission
   const currentWaypoint = missionData.current_wp_seq || 0
   const totalWaypoints = missionData.total_waypoints || 0
-  const missionWaypoints = missionData.mission_waypoints || {}
+  const vehicleMissionWaypoints = missionWaypoints.car || {}
+
 
   let instruction = 'Standby for mission instructions.'
   instructionType.value = 'info' // Default type
@@ -378,12 +390,12 @@ const updateOperatorInstructions = () => {
   }
 
   // Rest of the function remains the same...
-  if (totalWaypoints > 0 && missionWaypoints && Object.keys(missionWaypoints).length > 0) {
+  if (totalWaypoints > 0 && vehicleMissionWaypoints && Object.keys(vehicleMissionWaypoints).length > 0) {
     let targetWaypointSeq = currentWaypoint
     const visitedWaypoints = missionData.visited_waypoints || []
 
     if (visitedWaypoints.includes(currentWaypoint)) {
-      const sortedWaypoints = Object.keys(missionWaypoints).map(Number).sort((a, b) => a - b)
+      const sortedWaypoints = Object.keys(vehicleMissionWaypoints).map(Number).sort((a, b) => a - b)
       for (const seq of sortedWaypoints) {
         if (!visitedWaypoints.includes(seq)) {
           targetWaypointSeq = seq
@@ -392,7 +404,7 @@ const updateOperatorInstructions = () => {
       }
     }
 
-    const targetWaypoint = missionWaypoints[targetWaypointSeq]
+    const targetWaypoint = vehicleMissionWaypoints[targetWaypointSeq]
 
     if (targetWaypoint && vehiclePos.latitude && vehiclePos.longitude) {
       const wpDistance = calculateDistance(
@@ -775,7 +787,9 @@ const connectVehicle = async vehicleType => {
     if (!response.ok) {
       throw new Error(data.detail || `Failed to connect to ${vehicleType}`)
     }
+
     if (vehicleType === 'car') {
+      await fetchMissionWaypoints(vehicleType)
       armCarOnConnect()
     }
     snackbarMessage.value = `${vehicleType.charAt(0).toUpperCase() + vehicleType.slice(1)} connected successfully`
@@ -902,6 +916,17 @@ const fetchCoordinationStatus = async () => {
     console.error('Failed to fetch coordination status:', error)
   }
 }
+watch(() => vehicleData.mission.total_waypoints, (newTotal) => {
+  if (newTotal > 0) {
+    fetchMissionWaypoints('car')
+  }
+})
+
+watch(() => droneData.mission.total_waypoints, (newTotal) => {
+  if (newTotal > 0) {
+    fetchMissionWaypoints('drone')
+  }
+})
 
 // Update your onMounted function
 onMounted(async () => {

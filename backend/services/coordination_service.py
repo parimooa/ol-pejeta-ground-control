@@ -34,7 +34,9 @@ class CoordinationService:
         self._survey_initiated_by_user = (
             False  # Track if we initiated the current survey
         )
-        self.current_site_name = configured_site_name  # Site name from settings for waypoint persistence
+        self.current_site_name = (
+            configured_site_name  # Site name from settings for waypoint persistence
+        )
 
     @staticmethod
     def _calculate_distance(pos1, pos2) -> float:
@@ -80,9 +82,9 @@ class CoordinationService:
 
         # Determine if survey button should be enabled
         should_enable = (
-                self.proximity_threshold >= distance > 0
-                and not self._survey_mode_detected
-                and self._is_following
+            self.proximity_threshold >= distance > 0
+            and not self._survey_mode_detected
+            and self._is_following
         )
 
         # Only broadcast if state changed
@@ -365,7 +367,7 @@ class CoordinationService:
         """Set the current site name for waypoint persistence across all vehicles."""
         self.current_site_name = site_name
         print(f"Site name set to: {site_name}")
-        
+
         # Update all connected vehicles with the new site name
         for vehicle_type in ["drone", "car"]:
             vehicle = vehicle_service.get_vehicle(vehicle_type)

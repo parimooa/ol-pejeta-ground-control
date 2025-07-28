@@ -280,6 +280,25 @@ const fetchMissionWaypoints = async (vehicleType) => {
     console.error(`Error fetching mission waypoints for ${vehicleType}:`, error)
   }
 }
+const fetchMissionProgress = async (vehicleType) => {
+  try {
+    const response = await fetch(`http://localhost:8000/vehicles/${vehicleType}/mission/progress`)
+    const data = await response.json()
+
+    if (data.visited_waypoints) {
+      // Update the telemetry data with persisted progress
+      if (vehicleType === 'car') {
+        vehicleData.mission.visited_waypoints = data.visited_waypoints
+      } else {
+        droneData.mission.visited_waypoints = data.visited_waypoints
+      }
+
+      console.log(`📂 Loaded ${data.visited_waypoints.length} visited waypoints for ${vehicleType}`)
+    }
+  } catch (error) {
+    console.error(`Error fetching mission progress for ${vehicleType}:`, error)
+  }
+}
 
 // Instructions and mission steps
 const instructions = ref('Vehicle position is currently safe. Maintain current position during drone operation.')
@@ -365,7 +384,7 @@ const updateOperatorInstructions = () => {
   let instruction = 'Standby for mission instructions.'
   instructionType.value = 'info' // Default type
 
-  // Check if survey was just initiated (highest priority)
+  // Check if a survey was just initiated (highest priority)
   if (surveyInitiated.value && !isDroneSurveying.value) {
     instruction = '🚁 SURVEY INITIATED: Drone is preparing to start survey mission. Maintain current position and avoid sudden movements.'
     instructionType.value = 'survey'
@@ -373,7 +392,7 @@ const updateOperatorInstructions = () => {
     return // Exit early for survey initiation message
   }
 
-  // Check if drone is surveying - this takes priority over other instructions
+  // Check if the drone is surveying - this takes priority over other instructions
   if (isDroneSurveying.value && vehicleSpeed < 0.5 && !isDroneFollowing.value) {
     instruction = '🚁 SURVEY IN PROGRESS: Drone is actively surveying. Maintain current position and avoid sudden movements.'
     instructionType.value = 'survey'
@@ -381,7 +400,7 @@ const updateOperatorInstructions = () => {
     return // Exit early to prioritise survey message
   }
 
-  // Check if drone is in follow mode (not surveying, following is true, drone moving, vehicle parked)
+  // Check if the drone is in follow mode (not surveying, following is true, drone moving, vehicle parked)
   if (!isDroneSurveying.value && isDroneFollowing.value && droneSpeed > 1 && vehicleSpeed < 0.5) {
     instruction = '🤖 DRONE FOLLOWING: Drone is in follow mode and tracking ground vehicle. Vehicle is parked - drone maintaining position.'
     instructionType.value = 'info'
@@ -389,7 +408,7 @@ const updateOperatorInstructions = () => {
     return // Exit early for follow mode message
   }
 
-  // Rest of the function remains the same...
+
   if (totalWaypoints > 0 && vehicleMissionWaypoints && Object.keys(vehicleMissionWaypoints).length > 0) {
     let targetWaypointSeq = currentWaypoint
     const visitedWaypoints = missionData.visited_waypoints || []
@@ -416,6 +435,7 @@ const updateOperatorInstructions = () => {
         targetWaypoint.lat, targetWaypoint.lon
       )
       const waypointNumber = targetWaypointSeq + 1
+      console.log(waypointNumber)
 
       if (wpDistance <= 5 && !isDroneSurveying.value && !surveyInitiated.value) {
         instruction = `🎯 WAYPOINT REACHED: You've arrived at waypoint ${waypointNumber}/${totalWaypoints}. Survey operation available here.`
@@ -460,10 +480,11 @@ const updateOperatorInstructions = () => {
   } else if (vehicleSpeed > 2 && !waypointReached.value && !isDroneFollowing) {
     instruction = '🛑 SLOW DOWN: Approaching waypoint. Drone may start survey here. Reduce speed.'
     instructionType.value = 'action'
-  } else if (waypointReached.value && !surveyInitiated.value) {
-    instruction = '✅ MAINTAIN POSITION: You are at the survey waypoint. Keep vehicle stationary while drone surveys.'
-    instructionType.value = 'success'
   }
+  // else if (waypointReached.value && !surveyInitiated.value) {
+  //   instruction = '✅ MAINTAIN POSITION: You are at the survey waypoint. Keep vehicle stationary while drone surveys.'
+  //   instructionType.value = 'success'
+  // }
   //   }
   // }
 
@@ -538,6 +559,40 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
   return R * c
 }
 // Watch for changes in drone or vehicle position to update distance and instructions
+
+const resetMissionProgress = async (vehicleType) => {
+  try {
+    const response = await fetch(`http://localhost:8000/vehicles/${vehicleType}/mission/reset-progress`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+      }
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to reset progress')
+    }
+
+    // Clear local progress
+    if (vehicleType === 'car') {
+      vehicleData.mission.visited_waypoints = []
+      vehicleData.mission.current_wp_seq = 0
+    }
+
+    snackbarMessage.value = `Mission progress reset for ${vehicleType}`
+    snackbarColor.value = 'info'
+    showSnackbar.value = true
+
+  } catch (error) {
+    console.error(`Error resetting progress for ${vehicleType}:`, error)
+    snackbarMessage.value = `Reset Failed: ${error.message}`
+    snackbarColor.value = 'error'
+    showSnackbar.value = true
+  }
+}
+
 watch(
   [() => droneData.position, () => vehicleData.position, () => vehicleData.velocity, () => droneData.heartbeat, () => isCoordinationActive.value,
     () => isDroneFollowing.value,
@@ -771,8 +826,7 @@ const disconnectWebSocket = vehicleType => {
     wsConnections[vehicleType].close(1000, `Disconnecting ${vehicleType} by user action`)
   }
 }
-const connectVehicle = async vehicleType => {
-  console.log(`Connecting to ${vehicleType}...`)
+const connectVehicle = async (vehicleType) => {
   try {
     const response = await fetch(`http://localhost:8000/vehicles/${vehicleType}/connect`, {
       method: 'POST',
@@ -780,36 +834,33 @@ const connectVehicle = async vehicleType => {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify({
+        site_name: vehicleLocation.value.replace(" ", "-").toLowerCase()
+      })
     })
 
     const data = await response.json()
 
     if (!response.ok) {
-      throw new Error(data.detail || `Failed to connect to ${vehicleType}`)
+      throw new Error(data.detail || 'Failed to connect vehicle')
     }
 
-    if (vehicleType === 'car') {
-      await fetchMissionWaypoints(vehicleType)
-      armCarOnConnect()
-    }
-    snackbarMessage.value = `${vehicleType.charAt(0).toUpperCase() + vehicleType.slice(1)} connected successfully`
+    // Fetch mission waypoints and progress after successful connection
+    await fetchMissionWaypoints(vehicleType)
+    await fetchMissionProgress(vehicleType)
+
+    snackbarMessage.value = `Connected to ${vehicleType}`
     snackbarColor.value = 'success'
     showSnackbar.value = true
 
-    // Connect to the WebSocket for telemetry
-    connectWebSocket(vehicleType)
-
   } catch (error) {
     console.error(`Error connecting to ${vehicleType}:`, error)
-    if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-      snackbarMessage.value = 'Connection Refused: Check if the server is running.'
-    } else {
-      snackbarMessage.value = `Error connecting to ${vehicleType}: ${error.message}`
-    }
+    snackbarMessage.value = `Connection Failed: ${error.message}`
     snackbarColor.value = 'error'
     showSnackbar.value = true
   }
 }
+
 const disconnectVehicle = async vehicleType => {
   console.log(`Disconnecting ${vehicleType}...`)
   try {

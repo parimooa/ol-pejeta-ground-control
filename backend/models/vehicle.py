@@ -59,6 +59,11 @@ class Vehicle:
         self.build_connection_string()
         self._stop_threads = threading.Event()
 
+    def __repr__(self):
+        return (
+            f"Vehicle({self.vehicle_type}, {self.device}, {self.port}, {self.protocol})"
+        )
+
     def _get_initial_telemetry_dict(self) -> Dict[str, Any]:
         """Returns a clean dictionary for telemetry state."""
         # The nested function definition has been removed.
@@ -126,10 +131,7 @@ class Vehicle:
         )
         return True
 
-    def __repr__(self):
-        return (
-            f"Vehicle({self.vehicle_type}, {self.device}, {self.port}, {self.protocol})"
-        )
+
 
     def connect_vehicle(self):
         """Connect to the vehicle and start heartbeat thread."""
@@ -285,7 +287,7 @@ class Vehicle:
             return
 
         try:
-            previous_waypoints = waypoint_file_service.load_visited_waypoints(
+            previous_waypoints = waypoint_file_service.get_visited_waypoints(
                 self.current_site_name, str(self.vehicle_id)
             )
 
@@ -818,51 +820,14 @@ class Vehicle:
             )
         else:
             self.last_telemetry["mission_progress_percentage"] = 0
-        # --- End of New/Modified Section ---
+
 
     def get_current_telemetry(self) -> Dict[str, Any]:
         """Returns a thread-safe copy of the latest telemetry data."""
         with self._lock:
             return self.last_telemetry.copy()
 
-    # def _update_waypoint_sequences(self):
-    #     """Update current and next waypoint sequences based on visited waypoints."""
-    #     if not hasattr(self, 'mission_waypoints') or not self.mission_waypoints:
-    #         return
-    #
-    #     # Find the highest visited waypoint sequence
-    #     if self.visited_waypoints:
-    #         highest_visited = max(self.visited_waypoints)
-    #
-    #         # Current waypoint is the next unvisited waypoint after the highest visited
-    #         for seq in sorted(self.mission_waypoints.keys()):
-    #             if seq not in self.visited_waypoints:
-    #                 self.current_waypoint_seq = seq
-    #                 self.last_telemetry["current_mission_wp_seq"] = seq
-    #                 break
-    #         else:
-    #             # All waypoints visited
-    #             self.current_waypoint_seq = highest_visited
-    #             self.last_telemetry["current_mission_wp_seq"] = highest_visited
-    #     else:
-    #         # No waypoints visited yet, current is the first waypoint
-    #         if self.mission_waypoints:
-    #             first_seq = min(self.mission_waypoints.keys())
-    #             self.current_waypoint_seq = first_seq
-    #             self.last_telemetry["current_mission_wp_seq"] = first_seq
-    #
-    #     # Set next waypoint
-    #     current_seq = self.current_waypoint_seq
-    #     if current_seq is not None:
-    #         # Find next unvisited waypoint
-    #         next_seq = None
-    #         for seq in sorted(self.mission_waypoints.keys()):
-    #             if seq > current_seq and seq not in self.visited_waypoints:
-    #                 next_seq = seq
-    #                 break
-    #
-    #         self.next_waypoint_seq = next_seq
-    #         self.last_telemetry["next_mission_wp_seq"] = next_seq
+
 
     def get_waypoint_visit_status(self):
         """Get the current waypoint visit status for UI display."""
@@ -992,8 +957,6 @@ class Vehicle:
         # Radius of earth in meters
         r = 6371000
         return c * r
-
-    # Create a singleton instance
 
     def position(self) -> Dict[str, Any]:
         """

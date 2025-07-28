@@ -50,7 +50,8 @@ class VehicleService:
         """Get a vehicle by type."""
         return self.vehicles.get(vehicle_type)
 
-    def connect_vehicle(self, vehicle_type: str) -> bool:
+    def connect_vehicle(self, vehicle_type: str,site_name: str = "ol-pejeta"
+) -> bool:
         """Connect to a vehicle."""
         vehicle = self.get_vehicle(vehicle_type)
         if not vehicle:
@@ -58,6 +59,8 @@ class VehicleService:
             return False
 
         try:
+            vehicle.set_site_name(site_name)
+
             vehicle.connect_vehicle()
 
             # Start telemetry streaming if we have callbacks

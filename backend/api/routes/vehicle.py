@@ -29,14 +29,19 @@ async def get_vehicles() -> Dict[str, str]:
 
 
 @router.post("/{vehicle_type}/connect")
-async def connect_vehicle(vehicle_type: str) -> Dict[str, Any]:
-    """Connect to a vehicle."""
-    if vehicle_service.connect_vehicle(vehicle_type):
-        return {"status": "connected", "vehicle_type": vehicle_type}
+async def connect_vehicle(vehicle_type: str, site_name: str = "ol-pejeta") -> Dict[str, Any]:
+    """Connect to a vehicle with an optional site name for waypoint persistence."""
+    if vehicle_service.connect_vehicle(vehicle_type, site_name):
+        return {
+            "status": "connected",
+            "vehicle_type": vehicle_type,
+            "site_name": site_name
+        }
     else:
         raise HTTPException(
             status_code=500, detail=f"Failed to connect to {vehicle_type}"
         )
+
 
 
 @router.post("/{vehicle_type}/disconnect")
@@ -169,3 +174,56 @@ async def get_mission_waypoints(vehicle_type: str):
         "mission_waypoints": vehicle.mission_waypoints,
         "total_waypoints": vehicle.mission_total_waypoints,
     }
+
+
+@router.get("/{vehicle_type}/mission/progress")
+async def get_mission_progress(vehicle_type: str):
+    """Get mission progress including visited waypoints."""
+    vehicle = vehicle_service.get_vehicle(vehicle_type)
+    if not vehicle:
+        raise HTTPException(status_code=404, detail=f"Vehicle {vehicle_type} not found")
+
+    # Get progress from file if vehicle is car type
+    if vehicle_type == "car" and vehicle.current_site_name:
+        from backend.services.waypoint_file_service import waypoint_file_service
+        progress = waypoint_file_service.get_waypoint_progress(
+            vehicle.current_site_name, str(vehicle.vehicle_id)
+        )
+        return {
+            "visited_waypoints": list(vehicle.visited_waypoints),
+            "total_waypoints": vehicle.mission_total_waypoints,
+            "current_waypoint": vehicle.current_waypoint_seq,
+            "file_progress": progress
+        }
+
+    return {
+        "visited_waypoints": list(vehicle.visited_waypoints),
+        "total_waypoints": vehicle.mission_total_waypoints,
+        "current_waypoint": vehicle.current_waypoint_seq,
+        "file_progress": None
+    }
+
+
+@router.post("/{vehicle_type}/mission/reset-progress")
+async def reset_mission_progress(vehicle_type: str):
+    """Reset mission progress by clearing visited waypoints."""
+    vehicle = vehicle_service.get_vehicle(vehicle_type)
+    if not vehicle:
+        raise HTTPException(status_code=404, detail=f"Vehicle {vehicle_type} not found")
+
+    if vehicle_type == "car" and vehicle.current_site_name:
+        from backend.services.waypoint_file_service import waypoint_file_service
+        success = waypoint_file_service.clear_visited_waypoints(
+            vehicle.current_site_name, str(vehicle.vehicle_id)
+        )
+        if success:
+            vehicle.visited_waypoints = set()
+            vehicle.current_waypoint_seq = 0
+            return {"message": "Mission progress reset successfully"}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to reset progress")
+
+    # For non-car vehicles, just reset in memory
+    vehicle.visited_waypoints = set()
+    vehicle.current_waypoint_seq = 0
+    return {"message": "Mission progress reset successfully"}

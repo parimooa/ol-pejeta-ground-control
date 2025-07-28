@@ -42,6 +42,10 @@ class Vehicle:
         print(
             f"Connected to system {self.vehicle.target_system} component {self.vehicle.target_component}"
         )
+
+        if self.vehicle_type == "car" and self.current_site_name:
+            self.load_previous_visited_waypoints()
+
         self.vehicle.mav.statustext_send(
             mavutil.mavlink.MAV_SEVERITY_NOTICE, "QGC will read this".encode()
         )
@@ -79,6 +83,85 @@ class Vehicle:
             print("Vehicle disconnected.")
         else:
             print("No vehicle connected to disconnect.")
+
+    def load_previous_visited_waypoints(self):
+        """Load previously visited waypoints from persistent storage."""
+        if self.vehicle_type != "car":
+            return
+
+        if not self.current_site_name:
+            print("Warning: Cannot load waypoints - no site name set")
+            return
+
+        try:
+            visited_waypoints = waypoint_file_service.get_visited_waypoints(
+                self.current_site_name, str(self.vehicle_id)
+            )
+
+            if visited_waypoints:
+                self.visited_waypoints = set(visited_waypoints)
+                print(f"📂 Loaded {len(visited_waypoints)} previously visited waypoints: {sorted(visited_waypoints)}")
+
+                # Find the closest unvisited waypoint to resume from
+                if self.mission_waypoints:
+                    self._resume_from_closest_waypoint()
+            else:
+                print("📂 No previous waypoint progress found - starting fresh mission")
+                self.visited_waypoints = set()
+
+        except Exception as e:
+            print(f"Error loading previous waypoints: {e}")
+            self.visited_waypoints = set()
+
+    def _resume_from_closest_waypoint(self):
+        """Resume mission from the closest unvisited waypoint."""
+        if not self.mission_waypoints or not hasattr(self, 'last_telemetry'):
+            return
+
+        current_lat = self.last_telemetry.get("latitude")
+        current_lon = self.last_telemetry.get("longitude")
+
+        if current_lat is None or current_lon is None:
+            print("Cannot resume - no current position available")
+            return
+
+        # Find all unvisited waypoints
+        unvisited_waypoints = []
+        for seq, waypoint in self.mission_waypoints.items():
+            if seq not in self.visited_waypoints:
+                distance = self._calculate_distance(
+                    current_lat, current_lon,
+                    waypoint["lat"], waypoint["lon"]
+                )
+                unvisited_waypoints.append((seq, distance))
+
+        if unvisited_waypoints:
+            # Sort by distance and select the closest
+            closest_waypoint_seq = min(unvisited_waypoints, key=lambda x: x[1])[0]
+            self.current_waypoint_seq = closest_waypoint_seq
+            print(f"🎯 Resuming mission from closest unvisited waypoint: {closest_waypoint_seq + 1}")
+        else:
+            print("✅ All waypoints have been visited - mission complete")
+
+    def _save_waypoint_to_file(self, waypoint_seq: int):
+        """Save a visited waypoint to persistent storage (only for car vehicles)."""
+        if self.vehicle_type != "car":
+            return
+
+        if not self.current_site_name:
+            print(f"Warning: Cannot save waypoint {waypoint_seq} - no site name set")
+            return
+
+        try:
+            success = waypoint_file_service.update_visited_waypoint(
+                self.current_site_name, str(self.vehicle_id), waypoint_seq
+            )
+            if success:
+                print(f"💾 Waypoint {waypoint_seq + 1} saved to disk for site {self.current_site_name}")
+            else:
+                print(f"⚠️ Failed to save waypoint {waypoint_seq + 1} to disk")
+        except Exception as e:
+            print(f"Error saving waypoint {waypoint_seq}: {e}")
 
     def upload_mission(self):
         if not self.vehicle:
@@ -629,163 +712,6 @@ class Vehicle:
 
         return telemetry
 
-    def position_orig(self):
-        telemetry = {
-            "latitude": None,
-            "longitude": None,
-            "altitude_msl": None,
-            "relative_altitude": None,
-            "vx": None,
-            "vy": None,
-            "vz": None,
-            "heading": None,
-            "ground_speed": None,
-            "battery_voltage": None,
-            "battery_remaining_percentage": None,
-            "current_mission_wp_seq": None,
-            "distance_to_mission_wp": None,
-            "next_mission_wp_seq": None,
-            "mission_progress_percentage": None,
-        }
-        if not self.vehicle:
-            print("Vehicle not connected. Cannot get position.")
-            return telemetry
-
-        # Request necessary data streams (simplified: request every time)
-        # In a robust GCS, set stream rates once after connection.
-        stream_rate_hz = 10  # Common rate for telemetry updates
-
-        self.vehicle.mav.request_data_stream_send(
-            self.vehicle.target_system,
-            self.vehicle.target_component,
-            mavutil.mavlink.MAV_DATA_STREAM_POSITION,
-            stream_rate_hz,
-            1,
-        )
-        self.vehicle.mav.request_data_stream_send(
-            self.vehicle.target_system,
-            self.vehicle.target_component,
-            mavutil.mavlink.MAV_DATA_STREAM_EXTENDED_STATUS,
-            stream_rate_hz,
-            1,
-        )
-        # NAV_CONTROLLER_OUTPUT is often part of MAV_DATA_STREAM_EXTENDED_STATUS on ArduPilot
-        # If not, MAV_DATA_STREAM_EXTRA1 might be needed for NAV_CONTROLLER_OUTPUT or VFR_HUD
-
-        try:
-            # Loop to try and get all relevant messages within a short time window
-            # This is a simple approach; a more robust GCS would handle messages asynchronously.
-            start_fetch_time = time.time()
-            fetch_timeout = 1.0  # seconds to wait for all messages
-
-            got_global_pos = False
-            got_sys_status = False
-            got_mission_current = False
-            got_nav_controller = False
-
-            while time.time() - start_fetch_time < fetch_timeout:
-                msg = self.vehicle.recv_match(
-                    type=[
-                        "GLOBAL_POSITION_INT",
-                        "SYS_STATUS",
-                        "MISSION_CURRENT",
-                        "NAV_CONTROLLER_OUTPUT",
-                    ],
-                    blocking=False,  # Non-blocking read
-                    timeout=0.05,  # Short timeout for each read attempt
-                )
-                if not msg:
-                    if (
-                        got_global_pos
-                        and got_sys_status
-                        and got_mission_current
-                        and got_nav_controller
-                    ):
-                        break  # Got all we need
-                    time.sleep(0.01)  # Small delay before retrying
-                    continue
-
-                msg_type = msg.get_type()
-
-                if msg_type == "GLOBAL_POSITION_INT":
-                    telemetry["latitude"] = msg.lat / 1e7
-                    telemetry["longitude"] = msg.lon / 1e7
-                    telemetry["altitude_msl"] = msg.alt / 1000.0
-                    telemetry["relative_altitude"] = msg.relative_alt / 1000.0
-                    telemetry["vx"] = msg.vx / 100.0  # cm/s to m/s
-                    telemetry["vy"] = msg.vy / 100.0  # cm/s to m/s
-                    telemetry["vz"] = msg.vz / 100.0  # cm/s to m/s
-                    telemetry["heading"] = msg.hdg / 100.0 if msg.hdg != 65535 else None
-                    # Calculate ground speed from vx, vy
-                    if telemetry["vx"] is not None and telemetry["vy"] is not None:
-                        telemetry["ground_speed"] = math.sqrt(
-                            telemetry["vx"] ** 2 + telemetry["vy"] ** 2
-                        )
-                    got_global_pos = True
-
-                elif msg_type == "SYS_STATUS":
-                    telemetry["battery_voltage"] = (
-                        msg.voltage_battery / 1000.0
-                    )  # mV to V
-                    telemetry["battery_remaining_percentage"] = (
-                        msg.battery_remaining
-                    )  # Percentage
-                    got_sys_status = True
-
-                elif msg_type == "MISSION_CURRENT":
-                    telemetry["current_mission_wp_seq"] = msg.seq
-                    print(f"WP: {msg.seq}")
-                    # Calculate next mission waypoint sequence
-                    if (
-                        telemetry["current_mission_wp_seq"] is not None
-                        and self.mission_total_waypoints > 0
-                    ):
-                        current_seq = telemetry["current_mission_wp_seq"]
-                        if current_seq < (self.mission_total_waypoints - 1):
-                            telemetry["next_mission_wp_seq"] = current_seq + 1
-
-                    got_mission_current = True
-
-                elif msg_type == "NAV_CONTROLLER_OUTPUT":
-                    telemetry["distance_to_mission_wp"] = msg.wp_dist  # In meters
-                    got_nav_controller = True
-
-                # Break if all desired messages received
-                if (
-                    got_global_pos
-                    and got_sys_status
-                    and got_mission_current
-                    and got_nav_controller
-                ):
-                    break
-
-            # Calculate mission progress percentage
-            if (
-                self.mission_total_waypoints > 0
-                and telemetry["current_mission_wp_seq"] is not None
-            ):
-                current_seq = telemetry["current_mission_wp_seq"]
-                total_wps = self.mission_total_waypoints
-
-                # MISSION_CURRENT.seq is the *next* target.
-                # If seq is 0, 0% done. If seq is total_wps, 100% done.
-                if (
-                    total_wps > 0
-                ):  # Avoid division by zero if mission has 0 waypoints (though unlikely if loaded)
-                    progress = (float(current_seq) / total_wps) * 100.0
-                    telemetry["mission_progress_percentage"] = max(
-                        0.0, min(progress, 100.0)
-                    )  # Clamp between 0 and 100
-            elif self.mission_total_waypoints == 0:
-                telemetry["mission_progress_percentage"] = 0.0
-
-        except Exception as e:
-            print(f"Failed to get extended position data: {e}")
-            import traceback
-
-            traceback.print_exc()
-        print(telemetry)
-        return telemetry
 
 
 if __name__ == "__main__":
@@ -822,19 +748,7 @@ if __name__ == "__main__":
 
     if drone.connect_vehicle():
         print("\nDrone connected.")
-
         home_loc = drone_config.get("home_location")
-        # print(home_loc)
-        # drone.set_home_position(home_loc['lat'], home_loc['lon'], home_loc['alt'])
-        # if home_loc:
-        #     print(
-        #         f"\nSetting Home Position to Lat: {home_loc['lat']}, Lon: {home_loc['lon']}, Alt: {home_loc['alt']}m AMSL")
-        #     if drone.set_home_position(home_loc['lat'], home_loc['lon'], home_loc['alt']):
-        #         print("Home position successfully set.")
-        #     else:
-        #         print("Failed to set home position.")
-        # else:
-        #     print("Home location not defined in drone_config.")
 
         print("\nAttempting to upload mission...")
         if drone.upload_mission():
@@ -938,7 +852,6 @@ if __name__ == "__main__":
                 print("Failed to set GUIDED mode.")
         else:
             print("Failed to upload mission.")
-
         drone.disconnect_vehicle()
     else:
         print("Failed to connect to drone.")

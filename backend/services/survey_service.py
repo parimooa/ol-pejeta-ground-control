@@ -383,8 +383,6 @@ class SurveyService:
         scan_start_time = time.time()
         mission_complete = False
 
-        # Store initial car position
-        # initial_car_pos = await car_vehicle.position()
 
         while time.time() - scan_start_time < timeout:
             # Check if mission is complete
@@ -394,6 +392,7 @@ class SurveyService:
                 print("🎮 Switching drone back to GUIDED mode...")
                 # drone_vehicle.set_mode(FlightMode.GUIDED)
                 mission_complete = True
+
                 break
             await asyncio.sleep(1)
         if self.scan_abandoned:
@@ -448,7 +447,7 @@ class SurveyService:
         scan_waypoints = []
 
         # Calculate safe pattern dimensions to stay within max_distance
-        # Use 80% of max distance for pattern radius for safety margin
+
         safe_radius = max_distance * 0.4  # Half the distance for radius
 
         # Adjust pattern size based on constraint

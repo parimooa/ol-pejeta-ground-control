@@ -1,14 +1,14 @@
 <template>
   <v-card
     class="mb-4"
-    variant="outlined"
     :color="surveyButtonEnabled ? 'primary' : 'grey-lighten-2'"
+    variant="outlined"
   >
     <v-card-title class="text-subtitle-1 font-weight-bold d-flex align-center">
       <v-icon
-        :icon="surveyButtonEnabled ? 'mdi-map-search' : 'mdi-map-search-outline'"
         class="mr-2"
         :color="surveyButtonEnabled ? 'primary' : 'grey'"
+        :icon="surveyButtonEnabled ? 'mdi-map-search' : 'mdi-map-search-outline'"
       />
       Survey Location
     </v-card-title>
@@ -21,13 +21,13 @@
       </div>
 
       <v-btn
-        :disabled="!surveyButtonEnabled"
-        :color="surveyButtonEnabled ? 'primary' : 'grey'"
-        variant="outlined"
         block
-        size="large"
-        @click="showSurveyDialog = true"
+        :color="surveyButtonEnabled ? 'primary' : 'grey'"
+        :disabled="!surveyButtonEnabled"
         :loading="surveyInProgress"
+        size="large"
+        variant="outlined"
+        @click="showSurveyDialog = true"
       >
         <v-icon class="mr-2">mdi-target</v-icon>
         {{ surveyInProgress ? 'Survey in Progress...' : 'Survey at This Position' }}
@@ -42,7 +42,7 @@
     >
       <v-card>
         <v-card-title class="text-h6 font-weight-bold">
-          <v-icon color="primary" class="mr-2">mdi-map-search</v-icon>
+          <v-icon class="mr-2" color="primary">mdi-map-search</v-icon>
           Survey Confirmation
         </v-card-title>
 
@@ -52,7 +52,7 @@
           </div>
           <v-divider class="my-3" />
           <div class="text-body-2 text-medium-emphasis">
-            <v-icon size="small" class="mr-1">mdi-information-outline</v-icon>
+            <v-icon class="mr-1" size="small">mdi-information-outline</v-icon>
             The drone will survey in a lawnmower pattern centered on the vehicle's current location,
             staying within 500m distance. Survey will be abandoned if the vehicle moves 500m from ground vehicle.
           </div>
@@ -61,18 +61,18 @@
         <v-card-actions class="px-4 pb-4">
           <v-btn
             color="grey"
+            :disabled="surveyInProgress"
             variant="outlined"
             @click="showSurveyDialog = false"
-            :disabled="surveyInProgress"
           >
             Skip
           </v-btn>
           <v-spacer />
           <v-btn
             color="primary"
+            :loading="surveyInProgress"
             variant="flat"
             @click="initiateSurvey"
-            :loading="surveyInProgress"
           >
             Yes, Start Survey
           </v-btn>
@@ -83,36 +83,36 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+  import { ref } from 'vue'
 
-const props = defineProps({
-  surveyButtonEnabled: {
-    type: Boolean,
-    default: false
-  },
-  distance: {
-    type: Number,
-    default: 0
+  const props = defineProps({
+    surveyButtonEnabled: {
+      type: Boolean,
+      default: false,
+    },
+    distance: {
+      type: Number,
+      default: 0,
+    },
+  })
+
+  const emit = defineEmits(['initiate-survey'])
+
+  const showSurveyDialog = ref(false)
+  const surveyInProgress = ref(false)
+
+  const initiateSurvey = async () => {
+    surveyInProgress.value = true
+    showSurveyDialog.value = false
+
+    try {
+      await emit('initiate-survey')
+    } catch (error) {
+      console.error('Survey initiation error:', error)
+    } finally {
+      surveyInProgress.value = false
+    }
   }
-})
-
-const emit = defineEmits(['initiate-survey'])
-
-const showSurveyDialog = ref(false)
-const surveyInProgress = ref(false)
-
-const initiateSurvey = async () => {
-  surveyInProgress.value = true
-  showSurveyDialog.value = false
-
-  try {
-    await emit('initiate-survey')
-  } catch (error) {
-    console.error('Survey initiation error:', error)
-  } finally {
-    surveyInProgress.value = false
-  }
-}
 </script>
 
 <style scoped>

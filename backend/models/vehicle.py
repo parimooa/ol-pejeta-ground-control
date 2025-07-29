@@ -641,7 +641,7 @@ class Vehicle:
                 print("❌ Failed to clear existing mission before upload.")
                 return False
 
-            # --- START OF FIX ---
+
             # Reset the survey completion flag for the new mission.
             # This ensures we don't carry over a "complete" state from a previous run.
             with self._lock:
@@ -662,7 +662,7 @@ class Vehicle:
             print(
                 f"ℹ️ Mission completion will be triggered after reaching waypoint sequence: {self.last_waypoint_seq}"
             )
-            # --- END OF FIX ---
+
 
             # Send the total number of waypoints to the vehicle
             self.vehicle.mav.mission_count_send(

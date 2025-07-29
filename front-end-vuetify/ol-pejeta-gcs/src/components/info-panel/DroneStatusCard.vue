@@ -24,7 +24,7 @@
     </v-container>
 
     <v-card-subtitle class="text-h6 text-md-h5 font-weight-bold">
-     Drone Status
+      Drone Status
     </v-card-subtitle>
 
     <v-container fluid>
@@ -39,32 +39,32 @@
     </v-container>
 
     <v-card-subtitle class="text-h6 text-md-h5 font-weight-bold">
-     Survey Status
+      Survey Status
     </v-card-subtitle>
 
 
-<v-container fluid>
-  <v-row dense>
-    <v-col
-      v-for="(item, index) in missionTelemetryDisplay"
-      :key="'mission-' + index"
-      cols="6"
-    >
-      <v-card
-        class="text-center"
-        color="indigo"
-        rounded
-        elevation="2"
-      >
-        <v-card-text class="py-2">
-          <div class="font-weight-bold text-h5 text-white">{{ item.value }}</div>
-          <div class="text-caption text-white">{{ item.label }}</div>
+    <v-container fluid>
+      <v-row dense>
+        <v-col
+          v-for="(item, index) in missionTelemetryDisplay"
+          :key="'mission-' + index"
+          cols="6"
+        >
+          <v-card
+            class="text-center"
+            color="indigo"
+            elevation="2"
+            rounded
+          >
+            <v-card-text class="py-2">
+              <div class="font-weight-bold text-h5 text-white">{{ item.value }}</div>
+              <div class="text-caption text-white">{{ item.label }}</div>
 
-        </v-card-text>
-      </v-card>
-    </v-col>
-  </v-row>
-</v-container>
+            </v-card-text>
+          </v-card>
+        </v-col>
+      </v-row>
+    </v-container>
 
 
   </v-card>
@@ -116,7 +116,6 @@
   })
 
 
-
   const batteryProgressColor = computed(() => {
     const percentage = props.telemetryData.battery.remaining_percentage
     if (percentage < 20) return 'red'
@@ -124,7 +123,7 @@
     return 'green'
   })
 
- // Computed properties for display data with progress bars
+  // Computed properties for display data with progress bars
   const droneTelemetryDisplay = computed(() => [
     {
       // Use optional chaining and provide a default value if altitude_msl is null or undefined
@@ -156,90 +155,90 @@
   ])
 
 
-const missionTelemetryDisplay = computed(() => {
-  const current = props.telemetryData?.mission?.current_wp_seq || 0
-  const total = props.telemetryData?.mission?.total_waypoints || 0
-  const percentage = total > 0 ? Math.round((current / total) * 100) : 0
+  const missionTelemetryDisplay = computed(() => {
+    const current = props.telemetryData?.mission?.current_wp_seq || 0
+    const total = props.telemetryData?.mission?.total_waypoints || 0
+    const percentage = total > 0 ? Math.round((current / total) * 100) : 0
 
-  return [
-    {
-      value: `${current}/${total}`,
-      label: 'Current WP',
-      showProgress: false,
-    },
-    {
-      value: props.telemetryData?.mission?.next_wp_seq ?? 'N/A',
-      label: 'Next WP',
-      showProgress: false,
-    },
-    {
-      value: `${props.telemetryData?.mission?.distance_to_wp?.toFixed(0) ?? 'N/A'}m`,
-      label: 'Distance to WP',
-      showProgress: false,
-    },
-    {
-      value: `${percentage}%`,
-      label: 'Progress',
-      showProgress: true,
-      progressValue: percentage,
-      progressColor: 'blue',
-    },
-  ]
-})
+    return [
+      {
+        value: `${current}/${total}`,
+        label: 'Current WP',
+        showProgress: false,
+      },
+      {
+        value: props.telemetryData?.mission?.next_wp_seq ?? 'N/A',
+        label: 'Next WP',
+        showProgress: false,
+      },
+      {
+        value: `${props.telemetryData?.mission?.distance_to_wp?.toFixed(0) ?? 'N/A'}m`,
+        label: 'Distance to WP',
+        showProgress: false,
+      },
+      {
+        value: `${percentage}%`,
+        label: 'Progress',
+        showProgress: true,
+        progressValue: percentage,
+        progressColor: 'blue',
+      },
+    ]
+  })
 
-const operationalStatus = computed(() => {
-  const heartbeat = props.telemetryData?.heartbeat
+  const operationalStatus = computed(() => {
+    const heartbeat = props.telemetryData?.heartbeat
 
-  if (!heartbeat) {
-    return 'No Data'
-  }
-
-  const {
-    armed,
-    operational_status,
-    system_status,
-    custom_mode,
-    flight_mode,
-    guided_enabled
-  } = heartbeat
-
-  // System status values (MAV_STATE enum):
-  // 0: UNINIT, 1: BOOT, 2: CALIBRATING, 3: STANDBY, 4: ACTIVE, 5: CRITICAL, 6: EMERGENCY, 7: POWEROFF
-
-  // Determine actual operational state
-  let actualStatus = 'Unknown'
-
-  if (!armed) {
-    actualStatus = 'Idle'
-  } else if (armed && system_status === 3) {
-    // Armed but in standby
-    actualStatus = 'Armed'
-  } else if (armed && system_status === 4) {
-    // Armed and active - need to check flight mode for more specific status
-    if (custom_mode === 3 && props.telemetryData.velocity.ground_speed >1) {
-      // Auto mode - likely executing mission
-      actualStatus = 'Executing Mission'
-    } else if (custom_mode === 4) {
-      // Guided mode
-      actualStatus = guided_enabled ? 'Guided Flight' : 'Armed'
-    } else if (custom_mode === 22) {
-      // Takeoff mode (ArduCopter)
-      actualStatus = 'Taking Off'
-    } else if (custom_mode === 16) {
-      // Survey/Auto mission modes
-      actualStatus = 'Surveying'
-    } else {
-      actualStatus = 'Active Flight'
+    if (!heartbeat) {
+      return 'No Data'
     }
-  } else if (system_status === 5) {
-    actualStatus = 'Critical'
-  } else if (system_status === 6) {
-    actualStatus = 'Emergency'
-  }
+
+    const {
+      armed,
+      operational_status,
+      system_status,
+      custom_mode,
+      flight_mode,
+      guided_enabled,
+    } = heartbeat
+
+    // System status values (MAV_STATE enum):
+    // 0: UNINIT, 1: BOOT, 2: CALIBRATING, 3: STANDBY, 4: ACTIVE, 5: CRITICAL, 6: EMERGENCY, 7: POWEROFF
+
+    // Determine actual operational state
+    let actualStatus = 'Unknown'
+
+    if (!armed) {
+      actualStatus = 'Idle'
+    } else if (armed && system_status === 3) {
+      // Armed but in standby
+      actualStatus = 'Armed'
+    } else if (armed && system_status === 4) {
+      // Armed and active - need to check flight mode for more specific status
+      if (custom_mode === 3 && props.telemetryData.velocity.ground_speed >1) {
+        // Auto mode - likely executing mission
+        actualStatus = 'Executing Mission'
+      } else if (custom_mode === 4) {
+        // Guided mode
+        actualStatus = guided_enabled ? 'Guided Flight' : 'Armed'
+      } else if (custom_mode === 22) {
+        // Takeoff mode (ArduCopter)
+        actualStatus = 'Taking Off'
+      } else if (custom_mode === 16) {
+        // Survey/Auto mission modes
+        actualStatus = 'Surveying'
+      } else {
+        actualStatus = 'Active Flight'
+      }
+    } else if (system_status === 5) {
+      actualStatus = 'Critical'
+    } else if (system_status === 6) {
+      actualStatus = 'Emergency'
+    }
 
 
-  return actualStatus
-})
+    return actualStatus
+  })
 
   const operationalStatusColor = computed(() => {
     const status = operationalStatus.value.toLowerCase()

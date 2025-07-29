@@ -1,4 +1,3 @@
-
 <template>
   <v-card
     :border="instructionCard.border"
@@ -12,11 +11,11 @@
       <v-chip
         class="instructions-chip"
         :color="getChipColor()"
-        variant="elevated"
-        size="x-large"
         label
+        size="x-large"
+        variant="elevated"
       >
-        <span class="instructions-text" v-html="instructions"></span>
+        <span class="instructions-text" v-html="instructions" />
       </v-chip>
     </v-card-text>
   </v-card>

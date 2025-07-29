@@ -1,7 +1,7 @@
 <template>
   <v-navigation-drawer
-    class="info-panel"
     app
+    class="info-panel"
     location="right"
     permanent
     width="500"
@@ -13,19 +13,20 @@
         :instruction-card="instructionCard"
         :instructions="instructions"
       />
-      <VehicleStatusCard
-        :vehicle-telemetry-data="vehicleTelemetryData"
-        :vehicle-location="vehicleLocation"
-      />
-      <SurveyButtonCard
-        :survey-button-enabled="surveyButtonEnabled"
-        :distance="distance"
-        @initiate-survey="$emit('initiate-survey')"
-      />
       <DistanceStatusCard
         :distance="distance"
         :status="status"
         :status-color="statusColor"
+      />
+
+      <SurveyButtonCard
+        :distance="distance"
+        :survey-button-enabled="surveyButtonEnabled"
+        @initiate-survey="$emit('initiate-survey')"
+      />
+      <VehicleStatusCard
+        :vehicle-location="vehicleLocation"
+        :vehicle-telemetry-data="vehicleTelemetryData"
       />
 
       <DroneStatusCard

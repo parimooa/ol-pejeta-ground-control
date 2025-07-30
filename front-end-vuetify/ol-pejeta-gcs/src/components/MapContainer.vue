@@ -1032,15 +1032,16 @@ const displaySurveyGrid = waypoints => {
 const displayCompletedSurvey = waypoints => {
   if (!completedSurveySource || !waypoints || waypoints.length < 3) return
 
-  // Filter out any invalid waypoints with null/undefined coordinates
+  // Filter out invalid waypoints
   const validWaypoints = waypoints.filter(wp =>
     wp && wp.lat != null && wp.lon != null &&
     !isNaN(wp.lat) && !isNaN(wp.lon) &&
-    Math.abs(wp.lat) <= 90 && Math.abs(wp.lon) <= 180
+    Math.abs(wp.lat) <= 90 && Math.abs(wp.lon) <= 180 &&
+    wp.seq !== 0  // Exclude home position since it causes polygon to start with the actual home
   )
 
   if (validWaypoints.length < 3) {
-    console.warn('Not enough valid waypoints to form survey polygon')
+    console.warn('Not enough valid waypoints to form survey polygon (excluding home position)')
     return
   }
 
@@ -1067,7 +1068,7 @@ const displayCompletedSurvey = waypoints => {
   // Convert boundary coordinates to map projection
   const boundaryCoords = boundaryPoints.map(coord => fromLonLat(coord));
 
-  // Create the survey polygon feature (rectangular boundary)
+  // Create the survey polygon feature
   const surveyPolygon = new Feature({
     geometry: new Polygon([boundaryCoords]),
     type: 'survey_boundary'
@@ -1117,7 +1118,6 @@ const displayCompletedSurvey = waypoints => {
     completedSurveySource.addFeatures(waypointFeatures);
   }
 
-  console.log(`Survey displayed with ${waypointFeatures.length} waypoints and rectangular boundary polygon`);
 }
 
 const loadExistingSurveys = async () => {
@@ -1140,7 +1140,7 @@ const loadExistingSurveys = async () => {
   }
 }
 
-// Map initialization
+
 const initializeFeatures = () => {
   // Create vector source for all dynamic features
   vectorSource = new VectorSource()
@@ -1411,8 +1411,6 @@ watch(() => props.surveyComplete, async (isComplete, wasComplete) => {
     const droneId = props.droneTelemetryData?.vehicle_id || 'unknown';
 
     try {
-      // Backend now handles file saving automatically
-
       // Display completed survey as green polygon
       displayCompletedSurvey(waypoints);
 

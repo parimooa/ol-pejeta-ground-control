@@ -1,6 +1,9 @@
+import json
 import math
 import threading
 import time
+from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from backend.api.websockets.telemetry import telemetry_manager
@@ -58,6 +61,108 @@ class CoordinationService:
         )
         c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
         return R * c
+
+    def _find_closest_car_waypoint(self, car_position, car_waypoints):
+        """Find the closest car waypoint to determine mission_waypoint_id."""
+        if not car_waypoints or not car_position:
+            return 1  # Default to waypoint 1
+
+        closest_waypoint_id = 1
+        shortest_distance = float("inf")
+
+        for waypoint_id, waypoint in car_waypoints.items():
+            waypoint_pos = {
+                "latitude": waypoint.get("lat"),
+                "longitude": waypoint.get("lon"),
+            }
+            distance = self._calculate_distance(car_position, waypoint_pos)
+
+            if distance != -1 and distance < shortest_distance:
+                shortest_distance = distance
+                closest_waypoint_id = waypoint.get("seq", 1) + 1  # 1-indexed
+
+        return closest_waypoint_id
+
+    def _save_completed_survey(self, drone: "Vehicle", car: "Vehicle"):
+        """Save completed survey data to JSON file."""
+        try:
+            # Ensure surveys directory exists
+            surveys_dir = Path("surveyed_area")
+            surveys_dir.mkdir(exist_ok=True)
+
+            # Get current timestamp
+            timestamp = datetime.now()
+            survey_id = f"survey_{drone.vehicle_id}_{int(timestamp.timestamp())}"
+
+            # Get car position for closest waypoint calculation
+            car_position = car.position()
+            car_waypoints = car.mission_waypoints
+            closest_waypoint_id = self._find_closest_car_waypoint(
+                car_position, car_waypoints
+            )
+
+            # Generate filename
+            site_name_clean = (
+                self.current_site_name.replace(" ", "-").replace("/", "-").lower()
+            )
+            filename = f"site-{site_name_clean}-drone-surveyed-waypoints.json"
+
+            # Prepare survey data
+            survey_data = {
+                "id": survey_id,
+                "waypoints": [
+                    {
+                        "lat": wp.get("lat"),
+                        "lon": wp.get("lon"),
+                        "seq": wp.get("seq", i),
+                    }
+                    for i, wp in enumerate(drone.mission_waypoints.values())
+                ],
+                "vehicleId": str(drone.vehicle_id),
+                "completedAt": timestamp.isoformat(),
+                "siteName": self.current_site_name,
+                "mission_waypoint_id": closest_waypoint_id,
+                "closestWaypoint": closest_waypoint_id,
+                "scan_abandoned": survey_service.scan_abandoned,
+                "savedAt": timestamp.isoformat(),
+            }
+
+            # Load existing survey data if file exists
+            file_path = surveys_dir / filename
+            existing_surveys = []
+
+            if file_path.exists():
+                try:
+                    with open(file_path, "r") as f:
+                        existing_data = json.load(f)
+                        # Handle both old format (single survey) and new format (array)
+                        if isinstance(existing_data, list):
+                            existing_surveys = existing_data
+                        elif isinstance(existing_data, dict):
+                            existing_surveys = [existing_data]
+                except (json.JSONDecodeError, IOError) as e:
+                    print(f"⚠️ Warning: Could not read existing file {filename}: {e}")
+                    existing_surveys = []
+
+            # Add new survey to array
+            existing_surveys.append(survey_data)
+
+            # Save updated array to file
+            with open(file_path, "w") as f:
+                json.dump(existing_surveys, f, indent=2)
+
+            print(f"✅ Survey saved successfully: {filename}")
+            print(f"📁 File path: {file_path.absolute()}")
+            print(f"📊 Total surveys in file: {len(existing_surveys)}")
+            print(f"🚁 Drone waypoints: {len(survey_data['waypoints'])}")
+            print(f"🚗 Closest car waypoint: {closest_waypoint_id}")
+            print(f"❌ Scan abandoned: {survey_service.scan_abandoned}")
+
+            return True
+
+        except Exception as e:
+            print(f"❌ Error saving survey file: {e}")
+            return False
 
     def _is_drone_surveying(self, drone: "Vehicle") -> bool:
         """Check if the drone is currently actively surveying."""
@@ -129,6 +234,13 @@ class CoordinationService:
             # Check for survey completion (transition from surveying to not surveying)
             if self._last_survey_mode_state and not is_surveying:
                 print("🎉 Survey completed - drone switched back to GUIDED mode")
+
+                # Save completed survey data to file
+                if self._save_completed_survey(drone, car):
+                    print("📄 Survey data saved to file successfully")
+                else:
+                    print("❌ Failed to save survey data to file")
+
                 # Clear the survey flag when survey completes
                 # self._survey_initiated_by_user = False
                 telemetry_manager.broadcast_event(

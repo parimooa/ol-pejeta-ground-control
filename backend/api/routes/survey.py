@@ -200,22 +200,22 @@ async def load_surveys() -> List[Dict[str, Any]]:
         if not SURVEYS_DIR.exists():
             return surveys
 
-        for file_path in SURVEYS_DIR.glob("*.json"):
+        for file_path in SURVEYS_DIR.glob("*drone-surveyed*.json"):
             try:
                 with open(file_path, "r") as f:
                     survey_data = json.load(f)
-                    survey_data["filename"] = file_path.name
-                    surveys.append(survey_data)
             except json.JSONDecodeError as e:
                 print(f"Warning: Could not parse survey file {file_path}: {e}")
                 continue
             except Exception as e:
                 print(f"Warning: Error reading survey file {file_path}: {e}")
                 continue
-
-        surveys.sort(key=lambda x: x.get("completedAt", ""), reverse=True)
-
-        return surveys
+        waypoints = [
+            {"waypoints": waypoints["waypoints"]}
+            for waypoints in survey_data
+            if waypoints["waypoints"]
+        ]
+        return waypoints
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to load surveys: {str(e)}")

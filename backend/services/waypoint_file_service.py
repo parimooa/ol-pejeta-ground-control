@@ -28,14 +28,16 @@ class WaypointFileService:
             return []
 
         try:
-            with open(file_path, 'r') as f:
+            with open(file_path, "r") as f:
                 data = json.load(f)
-                return data.get('visited_waypoints', [])
+                return data.get("visited_waypoints", [])
         except (json.JSONDecodeError, IOError) as e:
             print(f"Error reading waypoints file {file_path}: {e}")
             return []
 
-    def update_visited_waypoint(self, site_name: str, vehicle_id: str, waypoint_seq: int) -> bool:
+    def update_visited_waypoint(
+        self, site_name: str, vehicle_id: str, waypoint_seq: int
+    ) -> bool:
         """Add a waypoint to the visited list and save to file"""
         file_path = self.get_visited_waypoints_file_path(site_name, vehicle_id)
 
@@ -53,12 +55,12 @@ class WaypointFileService:
             "vehicle_id": vehicle_id,
             "visited_waypoints": visited_waypoints,
             "last_updated": self._get_current_timestamp(),
-            "total_visited": len(visited_waypoints)
+            "total_visited": len(visited_waypoints),
         }
 
         try:
             # Overwrite the file with updated data
-            with open(file_path, 'w') as f:
+            with open(file_path, "w") as f:
                 json.dump(waypoint_data, f, indent=2)
             return True
         except IOError as e:
@@ -87,11 +89,11 @@ class WaypointFileService:
                 "visited_waypoints": [],
                 "total_visited": 0,
                 "last_updated": None,
-                "file_exists": False
+                "file_exists": False,
             }
 
         try:
-            with open(file_path, 'r') as f:
+            with open(file_path, "r") as f:
                 data = json.load(f)
                 data["file_exists"] = True
                 return data
@@ -102,13 +104,14 @@ class WaypointFileService:
                 "total_visited": 0,
                 "last_updated": None,
                 "file_exists": False,
-                "error": str(e)
+                "error": str(e),
             }
 
     @staticmethod
     def _get_current_timestamp() -> str:
         """Get the current timestamp in ISO format"""
         from datetime import datetime
+
         return datetime.now().isoformat()
 
 

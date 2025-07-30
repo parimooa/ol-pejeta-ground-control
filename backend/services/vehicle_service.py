@@ -50,8 +50,7 @@ class VehicleService:
         """Get a vehicle by type."""
         return self.vehicles.get(vehicle_type)
 
-    def connect_vehicle(self, vehicle_type: str,site_name: str = "ol-pejeta"
-) -> bool:
+    def connect_vehicle(self, vehicle_type: str, site_name: str = "ol-pejeta") -> bool:
         """Connect to a vehicle."""
         vehicle = self.get_vehicle(vehicle_type)
         if not vehicle:

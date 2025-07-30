@@ -17,7 +17,7 @@ const DB_VERSION = 1
 const STORE_NAMES = {
   osm: 'osm-tiles',
   satellite: 'satellite-tiles',
-  hybrid: 'hybrid-tiles'
+  hybrid: 'hybrid-tiles',
 }
 
 // Ol Pejeta Conservancy coordinates and default zoom levels
@@ -29,16 +29,16 @@ const DEFAULT_MAX_ZOOM = 18
  * Initialize the IndexedDB database for storing map tiles
  * @returns {Promise} Promise that resolves when the database is ready
  */
-export function initTileDatabase() {
+export function initTileDatabase () {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION)
 
-    request.onerror = (event) => {
+    request.onerror = event => {
       console.error('Error opening IndexedDB:', event.target.error)
       reject(event.target.error)
     }
 
-    request.onupgradeneeded = (event) => {
+    request.onupgradeneeded = event => {
       const db = event.target.result
 
       // Create object stores for each map type if they don't exist
@@ -55,7 +55,7 @@ export function initTileDatabase() {
       }
     }
 
-    request.onsuccess = (event) => {
+    request.onsuccess = event => {
       const db = event.target.result
       resolve(db)
     }
@@ -69,7 +69,7 @@ export function initTileDatabase() {
  * @param {Blob} tileBlob - The tile image as a Blob
  * @returns {Promise} Promise that resolves when the tile is stored
  */
-export function storeTile(mapType, tileKey, tileBlob) {
+export function storeTile (mapType, tileKey, tileBlob) {
   return new Promise((resolve, reject) => {
     initTileDatabase().then(db => {
       const transaction = db.transaction([STORE_NAMES[mapType]], 'readwrite')
@@ -78,11 +78,11 @@ export function storeTile(mapType, tileKey, tileBlob) {
       const request = store.put({
         tileKey,
         blob: tileBlob,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       })
 
       request.onsuccess = () => resolve()
-      request.onerror = (event) => reject(event.target.error)
+      request.onerror = event => reject(event.target.error)
     }).catch(reject)
   })
 }
@@ -93,7 +93,7 @@ export function storeTile(mapType, tileKey, tileBlob) {
  * @param {string} tileKey - The unique key for the tile (z/x/y)
  * @returns {Promise<Blob>} Promise that resolves with the tile blob or null if not found
  */
-export function getTile(mapType, tileKey) {
+export function getTile (mapType, tileKey) {
   return new Promise((resolve, reject) => {
     initTileDatabase().then(db => {
       const transaction = db.transaction([STORE_NAMES[mapType]], 'readonly')
@@ -109,7 +109,7 @@ export function getTile(mapType, tileKey) {
         }
       }
 
-      request.onerror = (event) => reject(event.target.error)
+      request.onerror = event => reject(event.target.error)
     }).catch(reject)
   })
 }
@@ -119,7 +119,7 @@ export function getTile(mapType, tileKey) {
  * @param {string} mapType - The map type (osm, satellite, hybrid)
  * @returns {Promise} Promise that resolves when the tiles are cleared
  */
-export function clearTiles(mapType) {
+export function clearTiles (mapType) {
   return new Promise((resolve, reject) => {
     initTileDatabase().then(db => {
       const transaction = db.transaction([STORE_NAMES[mapType]], 'readwrite')
@@ -128,7 +128,7 @@ export function clearTiles(mapType) {
       const request = store.clear()
 
       request.onsuccess = () => resolve()
-      request.onerror = (event) => reject(event.target.error)
+      request.onerror = event => reject(event.target.error)
     }).catch(reject)
   })
 }
@@ -138,7 +138,7 @@ export function clearTiles(mapType) {
  * @param {string} mapType - The map type (osm, satellite, hybrid)
  * @returns {Promise<number>} Promise that resolves with the count
  */
-export function countTiles(mapType) {
+export function countTiles (mapType) {
   return new Promise((resolve, reject) => {
     initTileDatabase().then(db => {
       const transaction = db.transaction([STORE_NAMES[mapType]], 'readonly')
@@ -147,7 +147,7 @@ export function countTiles(mapType) {
       const request = store.count()
 
       request.onsuccess = () => resolve(request.result)
-      request.onerror = (event) => reject(event.target.error)
+      request.onerror = event => reject(event.target.error)
     }).catch(reject)
   })
 }
@@ -157,7 +157,7 @@ export function countTiles(mapType) {
  * @param {Object} options - Options for the tile source
  * @returns {XYZ} The custom XYZ source
  */
-export function createOfflineXYZSource(options) {
+export function createOfflineXYZSource (options) {
   const { url, mapType, maxZoom = 19 } = options
 
   const source = new XYZ({
@@ -209,7 +209,7 @@ export function createOfflineXYZSource(options) {
         // Fall back to normal loading
         tile.getImage().src = src
       })
-    }
+    },
   })
 
   return source
@@ -219,7 +219,7 @@ export function createOfflineXYZSource(options) {
  * Create a custom OSM source that supports offline caching
  * @returns {OSM} The custom OSM source
  */
-export function createOfflineOSMSource() {
+export function createOfflineOSMSource () {
   const source = new OSM({
     crossOrigin: 'anonymous',
     tileLoadFunction: (tile, src) => {
@@ -267,7 +267,7 @@ export function createOfflineOSMSource() {
         // Fall back to normal loading
         tile.getImage().src = src
       })
-    }
+    },
   })
 
   return source
@@ -280,7 +280,7 @@ export function createOfflineOSMSource() {
  * @param {number} maxZoom - The maximum zoom level
  * @returns {number} The number of tiles
  */
-function calculateTileCount(extent, minZoom, maxZoom) {
+function calculateTileCount (extent, minZoom, maxZoom) {
   let count = 0
 
   for (let z = minZoom; z <= maxZoom; z++) {
@@ -313,14 +313,14 @@ function calculateTileCount(extent, minZoom, maxZoom) {
  * @param {Function} options.progressCallback - Callback for download progress
  * @returns {Promise} Promise that resolves when all tiles are downloaded
  */
-export function downloadMapTiles(options) {
+export function downloadMapTiles (options) {
   const {
     mapType,
     center = OL_PEJETA_CENTER,
     radius = 5, // 5km radius
     minZoom = DEFAULT_MIN_ZOOM,
     maxZoom = DEFAULT_MAX_ZOOM,
-    progressCallback = () => {}
+    progressCallback = () => {},
   } = options
 
   return new Promise((resolve, reject) => {
@@ -334,7 +334,7 @@ export function downloadMapTiles(options) {
         centerCoord[0] - radiusInMeters,
         centerCoord[1] - radiusInMeters,
         centerCoord[0] + radiusInMeters,
-        centerCoord[1] + radiusInMeters
+        centerCoord[1] + radiusInMeters,
       ]
 
       // Calculate total number of tiles
@@ -347,11 +347,11 @@ export function downloadMapTiles(options) {
         source = new OSM()
       } else if (mapType === 'satellite') {
         source = new XYZ({
-          url: 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}'
+          url: 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
         })
       } else if (mapType === 'hybrid') {
         source = new XYZ({
-          url: 'https://mt1.google.com/vt/lyrs=h&x={x}&y={y}&z={z}'
+          url: 'https://mt1.google.com/vt/lyrs=h&x={x}&y={y}&z={z}',
         })
       } else {
         throw new Error(`Unknown map type: ${mapType}`)
@@ -375,7 +375,7 @@ export function downloadMapTiles(options) {
             const tileUrl = source.tileUrlFunction([z, x, y])
             const tileKey = `${z}/${x}/${y}`
 
-            const promise = new Promise((resolveTile) => {
+            const promise = new Promise(resolveTile => {
               // Check if tile already exists in cache
               getTile(mapType, tileKey).then(blob => {
                 if (blob) {
@@ -435,7 +435,7 @@ export function downloadMapTiles(options) {
         resolve({
           mapType,
           totalTiles,
-          downloadedTiles
+          downloadedTiles,
         })
       }).catch(reject)
     } catch (error) {
@@ -448,7 +448,7 @@ export function downloadMapTiles(options) {
  * Check if the device is currently offline
  * @returns {boolean} True if offline, false if online
  */
-export function isOffline() {
+export function isOffline () {
   return !navigator.onLine
 }
 
@@ -457,7 +457,7 @@ export function isOffline() {
  * @param {Function} onlineCallback - Callback when device goes online
  * @param {Function} offlineCallback - Callback when device goes offline
  */
-export function addConnectivityListeners(onlineCallback, offlineCallback) {
+export function addConnectivityListeners (onlineCallback, offlineCallback) {
   window.addEventListener('online', onlineCallback)
   window.addEventListener('offline', offlineCallback)
 }
@@ -467,7 +467,7 @@ export function addConnectivityListeners(onlineCallback, offlineCallback) {
  * @param {Function} onlineCallback - The online callback to remove
  * @param {Function} offlineCallback - The offline callback to remove
  */
-export function removeConnectivityListeners(onlineCallback, offlineCallback) {
+export function removeConnectivityListeners (onlineCallback, offlineCallback) {
   window.removeEventListener('online', onlineCallback)
   window.removeEventListener('offline', offlineCallback)
 }

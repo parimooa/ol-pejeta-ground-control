@@ -131,8 +131,6 @@ class Vehicle:
         )
         return True
 
-
-
     def connect_vehicle(self):
         """Connect to the vehicle and start heartbeat thread."""
         print(
@@ -641,7 +639,6 @@ class Vehicle:
                 print("❌ Failed to clear existing mission before upload.")
                 return False
 
-
             # Reset the survey completion flag for the new mission.
             # This ensures we don't carry over a "complete" state from a previous run.
             with self._lock:
@@ -662,7 +659,6 @@ class Vehicle:
             print(
                 f"ℹ️ Mission completion will be triggered after reaching waypoint sequence: {self.last_waypoint_seq}"
             )
-
 
             # Send the total number of waypoints to the vehicle
             self.vehicle.mav.mission_count_send(
@@ -821,13 +817,10 @@ class Vehicle:
         else:
             self.last_telemetry["mission_progress_percentage"] = 0
 
-
     def get_current_telemetry(self) -> Dict[str, Any]:
         """Returns a thread-safe copy of the latest telemetry data."""
         with self._lock:
             return self.last_telemetry.copy()
-
-
 
     def get_waypoint_visit_status(self):
         """Get the current waypoint visit status for UI display."""

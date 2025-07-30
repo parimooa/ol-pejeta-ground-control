@@ -100,7 +100,9 @@ class Vehicle:
 
             if visited_waypoints:
                 self.visited_waypoints = set(visited_waypoints)
-                print(f"📂 Loaded {len(visited_waypoints)} previously visited waypoints: {sorted(visited_waypoints)}")
+                print(
+                    f"📂 Loaded {len(visited_waypoints)} previously visited waypoints: {sorted(visited_waypoints)}"
+                )
 
                 # Find the closest unvisited waypoint to resume from
                 if self.mission_waypoints:
@@ -115,7 +117,7 @@ class Vehicle:
 
     def _resume_from_closest_waypoint(self):
         """Resume mission from the closest unvisited waypoint."""
-        if not self.mission_waypoints or not hasattr(self, 'last_telemetry'):
+        if not self.mission_waypoints or not hasattr(self, "last_telemetry"):
             return
 
         current_lat = self.last_telemetry.get("latitude")
@@ -130,8 +132,7 @@ class Vehicle:
         for seq, waypoint in self.mission_waypoints.items():
             if seq not in self.visited_waypoints:
                 distance = self._calculate_distance(
-                    current_lat, current_lon,
-                    waypoint["lat"], waypoint["lon"]
+                    current_lat, current_lon, waypoint["lat"], waypoint["lon"]
                 )
                 unvisited_waypoints.append((seq, distance))
 
@@ -139,7 +140,9 @@ class Vehicle:
             # Sort by distance and select the closest
             closest_waypoint_seq = min(unvisited_waypoints, key=lambda x: x[1])[0]
             self.current_waypoint_seq = closest_waypoint_seq
-            print(f"🎯 Resuming mission from closest unvisited waypoint: {closest_waypoint_seq + 1}")
+            print(
+                f"🎯 Resuming mission from closest unvisited waypoint: {closest_waypoint_seq + 1}"
+            )
         else:
             print("✅ All waypoints have been visited - mission complete")
 
@@ -157,7 +160,9 @@ class Vehicle:
                 self.current_site_name, str(self.vehicle_id), waypoint_seq
             )
             if success:
-                print(f"💾 Waypoint {waypoint_seq + 1} saved to disk for site {self.current_site_name}")
+                print(
+                    f"💾 Waypoint {waypoint_seq + 1} saved to disk for site {self.current_site_name}"
+                )
             else:
                 print(f"⚠️ Failed to save waypoint {waypoint_seq + 1} to disk")
         except Exception as e:
@@ -711,7 +716,6 @@ class Vehicle:
             traceback.print_exc()
 
         return telemetry
-
 
 
 if __name__ == "__main__":

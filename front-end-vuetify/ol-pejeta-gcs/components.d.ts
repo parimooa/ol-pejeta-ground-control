@@ -18,6 +18,7 @@ declare module 'vue' {
     InstructionsCard: typeof import('./src/components/panels/InstructionsCard.vue')['default']
     MapComponent: typeof import('./src/components/MapComponent.vue')['default']
     MapContainer: typeof import('./src/components/MapContainer.vue')['default']
+    MapTypeDownloadSection: typeof import('./src/components/MapTypeDownloadSection.vue')['default']
     MissionProgressCard: typeof import('./src/components/info-panel/MissionProgressCard.vue')['default']
     OperatorInstructionsCard: typeof import('./src/components/info-panel/OperatorInstructionsCard.vue')['default']
     ProgressCard: typeof import('./src/components/panels/ProgressCard.vue')['default']

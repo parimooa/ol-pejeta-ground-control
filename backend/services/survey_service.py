@@ -383,7 +383,6 @@ class SurveyService:
         scan_start_time = time.time()
         mission_complete = False
 
-
         while time.time() - scan_start_time < timeout:
             # Check if mission is complete
             if drone_vehicle.is_mission_complete():

@@ -37,7 +37,7 @@
             color="purple"
             variant="outlined"
           >
-            <v-btn size="small" :value="true">
+            <v-btn :value="true" size="small">
               <v-icon>mdi-car-connected</v-icon>
               <span class="ml-1">Follow Vehicle</span>
             </v-btn>
@@ -49,7 +49,7 @@
             color="primary"
             variant="outlined"
           >
-            <v-btn size="small" :value="true">
+            <v-btn :value="true" size="small">
               <v-icon>mdi-quadcopter</v-icon>
               <span class="ml-1">Follow Drone</span>
             </v-btn>
@@ -61,11 +61,11 @@
         <div class="d-flex gap-2">
           <div class="toggle-wrapper">
             <v-btn
-              size="small"
-              color="success"
-              variant="outlined"
               :disabled="props.isCoordinationActive || coordinationLoading"
               :loading="coordinationLoading && !props.isCoordinationActive"
+              color="success"
+              size="small"
+              variant="outlined"
               @click="startCoordination"
             >
               <v-icon>mdi-play</v-icon>
@@ -75,11 +75,11 @@
 
           <div class="toggle-wrapper">
             <v-btn
-              size="small"
-              color="error"
-              variant="outlined"
               :disabled="!props.isCoordinationActive || coordinationLoading"
               :loading="coordinationLoading && props.isCoordinationActive"
+              color="error"
+              size="small"
+              variant="outlined"
               @click="showStopConfirmation = true"
             >
               <v-icon>mdi-stop</v-icon>
@@ -93,7 +93,7 @@
       <v-dialog v-model="showStopConfirmation" max-width="400" persistent>
         <v-card>
           <v-card-title class="text-h6 font-weight-bold">
-            <v-icon color="warning" class="mr-2">mdi-alert</v-icon>
+            <v-icon class="mr-2" color="warning">mdi-alert</v-icon>
             Confirm Stop Coordination
           </v-card-title>
 
@@ -109,19 +109,19 @@
           </v-card-text>
 
           <v-card-actions class="px-4 pb-4">
-            <v-spacer></v-spacer>
+            <v-spacer/>
             <v-btn
+              :disabled="coordinationLoading"
               color="primary"
               variant="outlined"
               @click="showStopConfirmation = false"
-              :disabled="coordinationLoading"
             >
               Cancel
             </v-btn>
             <v-btn
+              :loading="coordinationLoading"
               color="error"
               @click="stopCoordination"
-              :loading="coordinationLoading"
             >
               Stop Coordination
             </v-btn>
@@ -134,12 +134,12 @@
       <div class="offline-controls pa-2">
         <div class="toggle-wrapper">
           <v-btn
-            @click="showOfflineDialog = true"
-            size="small"
             :color="isDeviceOffline ? 'warning' : 'info'"
-            variant="outlined"
-            prepend-icon="mdi-map-marker-path"
             :disabled="isDownloading"
+            prepend-icon="mdi-map-marker-path"
+            size="small"
+            variant="outlined"
+            @click="showOfflineDialog = true"
           >
             <v-icon v-if="isDeviceOffline" class="mr-1">mdi-wifi-off</v-icon>
             <span>{{ isDeviceOffline ? 'Offline Maps' : 'Download Maps' }}</span>
@@ -152,13 +152,13 @@
     <v-dialog v-model="showOfflineDialog" max-width="600" persistent>
       <v-card>
         <v-card-title class="text-h6 font-weight-bold">
-          <v-icon color="primary" class="mr-2">mdi-map-marker-path</v-icon>
+          <v-icon class="mr-2" color="primary">mdi-map-marker-path</v-icon>
           Offline Maps for Ol Pejeta Conservancy
         </v-card-title>
 
         <v-card-text>
           <div v-if="isDeviceOffline" class="mb-4 pa-2 warning-bg rounded">
-            <v-icon color="warning" class="mr-2">mdi-wifi-off</v-icon>
+            <v-icon class="mr-2" color="warning">mdi-wifi-off</v-icon>
             <span class="font-weight-bold">You are currently offline.</span>
             Using cached map tiles for Ol Pejeta Conservancy.
           </div>
@@ -170,21 +170,21 @@
 
           <v-slider
             v-model="offlineAreaRadius"
-            :min="1"
+            :disabled="isDownloading"
             :max="10"
+            :min="1"
             :step="1"
-            label="Download Area Radius"
             hint="Larger radius requires more storage"
+            label="Download Area Radius"
             persistent-hint
             thumb-label
-            :disabled="isDownloading"
           >
-            <template v-slot:append>
+            <template #append>
               <span class="text-body-2">{{ offlineAreaRadius }}km</span>
             </template>
           </v-slider>
 
-          <v-divider class="my-4"></v-divider>
+          <v-divider class="my-4"/>
 
           <!-- Standard Map -->
           <div class="d-flex align-center justify-space-between mb-4">
@@ -200,24 +200,24 @@
 
             <div class="d-flex">
               <v-btn
-                size="small"
-                color="error"
-                variant="outlined"
-                class="mr-2"
-                @click="clearOfflineMapTiles('osm')"
                 :disabled="isDownloading || offlineTileCounts.osm === 0"
+                class="mr-2"
+                color="error"
+                size="small"
+                variant="outlined"
+                @click="clearOfflineMapTiles('osm')"
               >
                 <v-icon size="small">mdi-delete</v-icon>
               </v-btn>
 
               <v-btn
-                size="small"
-                color="primary"
-                :loading="isDownloading && downloadingMapType === 'osm'"
                 :disabled="isDownloading && downloadingMapType !== 'osm'"
+                :loading="isDownloading && downloadingMapType === 'osm'"
+                color="primary"
+                size="small"
                 @click="downloadOfflineMapTiles('osm')"
               >
-                <v-icon size="small" class="mr-1">mdi-download</v-icon>
+                <v-icon class="mr-1" size="small">mdi-download</v-icon>
                 Download
               </v-btn>
             </div>
@@ -231,7 +231,7 @@
             rounded
             striped
           >
-            <template v-slot:default>
+            <template #default>
               {{ downloadProgress.osm.current }} / {{ downloadProgress.osm.total }} tiles
             </template>
           </v-progress-linear>
@@ -250,24 +250,24 @@
 
             <div class="d-flex">
               <v-btn
-                size="small"
-                color="error"
-                variant="outlined"
-                class="mr-2"
-                @click="clearOfflineMapTiles('satellite')"
                 :disabled="isDownloading || offlineTileCounts.satellite === 0"
+                class="mr-2"
+                color="error"
+                size="small"
+                variant="outlined"
+                @click="clearOfflineMapTiles('satellite')"
               >
                 <v-icon size="small">mdi-delete</v-icon>
               </v-btn>
 
               <v-btn
-                size="small"
-                color="primary"
-                :loading="isDownloading && downloadingMapType === 'satellite'"
                 :disabled="isDownloading && downloadingMapType !== 'satellite'"
+                :loading="isDownloading && downloadingMapType === 'satellite'"
+                color="primary"
+                size="small"
                 @click="downloadOfflineMapTiles('satellite')"
               >
-                <v-icon size="small" class="mr-1">mdi-download</v-icon>
+                <v-icon class="mr-1" size="small">mdi-download</v-icon>
                 Download
               </v-btn>
             </div>
@@ -281,7 +281,7 @@
             rounded
             striped
           >
-            <template v-slot:default>
+            <template #default>
               {{ downloadProgress.satellite.current }} / {{ downloadProgress.satellite.total }} tiles
             </template>
           </v-progress-linear>
@@ -300,24 +300,24 @@
 
             <div class="d-flex">
               <v-btn
-                size="small"
-                color="error"
-                variant="outlined"
-                class="mr-2"
-                @click="clearOfflineMapTiles('hybrid')"
                 :disabled="isDownloading || offlineTileCounts.hybrid === 0"
+                class="mr-2"
+                color="error"
+                size="small"
+                variant="outlined"
+                @click="clearOfflineMapTiles('hybrid')"
               >
                 <v-icon size="small">mdi-delete</v-icon>
               </v-btn>
 
               <v-btn
-                size="small"
-                color="primary"
-                :loading="isDownloading && downloadingMapType === 'hybrid'"
                 :disabled="isDownloading && downloadingMapType !== 'hybrid'"
+                :loading="isDownloading && downloadingMapType === 'hybrid'"
+                color="primary"
+                size="small"
                 @click="downloadOfflineMapTiles('hybrid')"
               >
-                <v-icon size="small" class="mr-1">mdi-download</v-icon>
+                <v-icon class="mr-1" size="small">mdi-download</v-icon>
                 Download
               </v-btn>
             </div>
@@ -331,17 +331,17 @@
             rounded
             striped
           >
-            <template v-slot:default>
+            <template #default>
               {{ downloadProgress.hybrid.current }} / {{ downloadProgress.hybrid.total }} tiles
             </template>
           </v-progress-linear>
 
           <v-alert
             v-if="isDeviceOffline"
-            type="warning"
-            variant="tonal"
             class="mt-4"
             density="compact"
+            type="warning"
+            variant="tonal"
           >
             <div class="text-body-2">
               <strong>Note:</strong> You cannot download new map tiles while offline.
@@ -351,12 +351,12 @@
         </v-card-text>
 
         <v-card-actions class="px-4 pb-4">
-          <v-spacer></v-spacer>
+          <v-spacer/>
           <v-btn
+            :disabled="isDownloading"
             color="primary"
             variant="outlined"
             @click="showOfflineDialog = false"
-            :disabled="isDownloading"
           >
             Close
           </v-btn>
@@ -394,7 +394,7 @@ import {
   createOfflineXYZSource,
   downloadMapTiles,
   isOffline,
-  removeConnectivityListeners
+  removeConnectivityListeners,
 } from '@/utils/OfflineMapUtils'
 
 // Import survey file utilities
@@ -402,7 +402,7 @@ import {
   findClosestWaypoint,
   generateSurveyFilename,
   loadSurveysFromFiles,
-  saveSurveyToFile
+  saveSurveyToFile,
 } from '@/utils/SurveyFileUtils'
 
 const props = defineProps({
@@ -436,27 +436,27 @@ const props = defineProps({
   },
   vehicleWaypoints: {
     type: Object,
-    default: () => ({})
+    default: () => ({}),
   },
   droneMissionWaypoints: {
     type: Array,
-    default: () => []
+    default: () => [],
   },
   surveyComplete: {
     type: Boolean,
-    default: false
+    default: false,
   },
   isDroneSurveying: {
     type: Boolean,
-    default: false
-  }
+    default: false,
+  },
 })
 
 const emit = defineEmits([
   'update:current-position',
   'update:drone-position',
   'update:vehicle-position',
-  'coordination-status'
+  'coordination-status',
 
 ])
 
@@ -509,14 +509,14 @@ const showOfflineDialog = ref(false)
 const downloadProgress = ref({
   osm: {current: 0, total: 0, percentage: 0},
   satellite: {current: 0, total: 0, percentage: 0},
-  hybrid: {current: 0, total: 0, percentage: 0}
+  hybrid: {current: 0, total: 0, percentage: 0},
 })
 const isDownloading = ref(false)
 const downloadingMapType = ref('')
 const offlineTileCounts = ref({
   osm: 0,
   satellite: 0,
-  hybrid: 0
+  hybrid: 0,
 })
 const offlineAreaRadius = ref(5) // 5km radius by default
 
@@ -551,8 +551,8 @@ const startCoordination = async () => {
     const response = await fetch('http://localhost:8000/coordination/start', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
-      }
+        'Content-Type': 'application/json',
+      },
     })
 
     if (!response.ok) {
@@ -565,7 +565,7 @@ const startCoordination = async () => {
       // Emit success event to parent component for snackbar
       emit('coordination-status', {
         type: 'success',
-        message: 'Coordination service started successfully'
+        message: 'Coordination service started successfully',
       })
     } else {
       throw new Error(data.message || 'Failed to start coordination service')
@@ -577,7 +577,7 @@ const startCoordination = async () => {
     // Emit error event to parent component for snackbar
     emit('coordination-status', {
       type: 'error',
-      message: `Unable to start coordination: ${error.message.includes('fetch') ? 'Backend service unavailable' : error.message}`
+      message: `Unable to start coordination: ${error.message.includes('fetch') ? 'Backend service unavailable' : error.message}`,
     })
   } finally {
     coordinationLoading.value = false
@@ -597,7 +597,7 @@ const stopCoordination = async () => {
       headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
-      }
+      },
     })
 
     const data = await validateApiResponse(response)
@@ -609,7 +609,100 @@ const stopCoordination = async () => {
     coordinationLoading.value = false
   }
 }
-const validateApiResponse = async (response) => {
+
+// Function to fetch drone mission waypoints from REST endpoint
+const fetchDroneMissionWaypoints = async (vehicleType = 'drone') => {
+  try {
+    const response = await fetch(`http://localhost:8000/vehicles/${vehicleType}/mission/waypoints`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch mission waypoints: ${response.statusText}`)
+    }
+
+    const data = await response.json()
+    console.log(`Fetched ${data.total_waypoints} mission waypoints for ${vehicleType}`)
+    return data.mission_waypoints || []
+  } catch (error) {
+    console.error('Error fetching drone mission waypoints:', error)
+    return []
+  }
+}
+
+// Function to find the closest mission waypoint to vehicle position
+const findClosestMissionWaypoint = (missionWaypoints, vehiclePosition) => {
+  if (!missionWaypoints || missionWaypoints.length === 0 || !vehiclePosition) {
+    return null
+  }
+
+  let closestWaypoint = missionWaypoints[0]
+  let shortestDistance = calculateDistance(
+    vehiclePosition.lat, vehiclePosition.lon,
+    closestWaypoint.lat, closestWaypoint.lon
+  )
+
+  for (const waypoint of missionWaypoints) {
+    const distance = calculateDistance(
+      vehiclePosition.lat, vehiclePosition.lon,
+      waypoint.lat, waypoint.lon
+    )
+
+    if (distance < shortestDistance) {
+      shortestDistance = distance
+      closestWaypoint = waypoint
+    }
+  }
+
+  return closestWaypoint.seq || closestWaypoint.id || 1
+}
+
+// Haversine distance calculation for mission waypoints
+const calculateDistance = (lat1, lon1, lat2, lon2) => {
+  const R = 6371000 // Earth's radius in meters
+  const toRad = value => (value * Math.PI) / 180
+
+  const dLat = toRad(lat2 - lat1)
+  const dLon = toRad(lon2 - lon1)
+  const lat1Rad = toRad(lat1)
+  const lat2Rad = toRad(lat2)
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1Rad) * Math.cos(lat2Rad)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return R * c
+}
+
+// Function to clear mission waypoints from vehicle after survey completion
+const clearDroneMission = async (vehicleType = 'drone') => {
+  try {
+    const response = await fetch(`http://localhost:8000/vehicles/${vehicleType}/mission/clear`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to clear mission: ${response.statusText}`)
+    }
+
+    const data = await response.json()
+    console.log(`Mission cleared successfully for ${vehicleType}:`, data.message)
+    return true
+  } catch (error) {
+    console.error('Error clearing drone mission:', error)
+    return false
+  }
+}
+
+const validateApiResponse = async response => {
   const data = await response.json()
 
   if (!response.ok) {
@@ -630,20 +723,20 @@ const updateOfflineTileCounts = async () => {
     const [osmCount, satelliteCount, hybridCount] = await Promise.all([
       countTiles('osm'),
       countTiles('satellite'),
-      countTiles('hybrid')
+      countTiles('hybrid'),
     ])
 
     offlineTileCounts.value = {
       osm: osmCount,
       satellite: satelliteCount,
-      hybrid: hybridCount
+      hybrid: hybridCount,
     }
   } catch (error) {
     console.error('Error counting offline tiles:', error)
   }
 }
 
-const downloadOfflineMapTiles = async (type) => {
+const downloadOfflineMapTiles = async type => {
   if (isDownloading.value) return
   isDownloading.value = true
   downloadingMapType.value = type
@@ -654,15 +747,15 @@ const downloadOfflineMapTiles = async (type) => {
     const center = toLonLat(view.getCenter())
     await downloadMapTiles({
       mapType: type,
-      center: center,
+      center,
       radius: offlineAreaRadius.value,
       progressCallback: (current, total) => {
         downloadProgress.value[type] = {
           current,
           total,
-          percentage: Math.round((current / total) * 100)
+          percentage: Math.round((current / total) * 100),
         }
-      }
+      },
     })
     await updateOfflineTileCounts()
   } catch (error) {
@@ -673,7 +766,7 @@ const downloadOfflineMapTiles = async (type) => {
   }
 }
 
-const clearOfflineMapTiles = async (type) => {
+const clearOfflineMapTiles = async type => {
   try {
     await clearTiles(type)
     await updateOfflineTileCounts()
@@ -696,7 +789,7 @@ const switchMapType = newType => {
 const gpsToMapCoordinates = (lat, lng) => fromLonLat([lng, lat])
 
 // Improved following functions
-const centerMapOnVehicle = (coordinates) => {
+const centerMapOnVehicle = coordinates => {
   if (!map || !followVehicle.value || isUserInteracting) return
   const now = Date.now()
   if (now - lastFollowUpdate < followUpdateThrottle) return
@@ -704,7 +797,7 @@ const centerMapOnVehicle = (coordinates) => {
   map.getView().setCenter(coordinates)
 }
 
-const centerMapOnDrone = (coordinates) => {
+const centerMapOnDrone = coordinates => {
   if (!map || !followDrone.value || isUserInteracting) return
   const now = Date.now()
   if (now - lastFollowUpdate < followUpdateThrottle) return
@@ -772,7 +865,7 @@ const updateMapFeatures = () => {
 }
 
 // Waypoint functions
-const updateWaypointsOnMap = (waypointsObj) => {
+const updateWaypointsOnMap = waypointsObj => {
   if (!waypointSource || !routeSource) return
 
   waypointSource.clear()
@@ -785,22 +878,22 @@ const updateWaypointsOnMap = (waypointsObj) => {
   }
 
   const coordinates = []
-  waypointsArray.forEach((waypoint) => {
+  waypointsArray.forEach(waypoint => {
     const coord = fromLonLat([waypoint.lon, waypoint.lat])
     coordinates.push(coord)
 
-    const feature = new Feature({geometry: new Point(coord), waypoint: waypoint})
+    const feature = new Feature({geometry: new Point(coord), waypoint})
     feature.setStyle(new Style({
       image: new CircleStyle({
         radius: 15,
         fill: new Fill({color: '#ff6b35'}),
-        stroke: new Stroke({color: 'white', width: 2})
+        stroke: new Stroke({color: 'white', width: 2}),
       }),
       text: new Text({
         text: (waypoint.seq + 1).toString(),
         font: 'bold 12px Arial',
-        fill: new Fill({color: 'white'})
-      })
+        fill: new Fill({color: 'white'}),
+      }),
     }))
     waypointSource.addFeature(feature)
   })
@@ -808,7 +901,7 @@ const updateWaypointsOnMap = (waypointsObj) => {
   if (coordinates.length > 1) {
     const routeFeature = new Feature({geometry: new LineString(coordinates)})
     routeFeature.setStyle(new Style({
-      stroke: new Stroke({color: '#ff6b35', width: 3, lineDash: [5, 5]})
+      stroke: new Stroke({color: '#ff6b35', width: 3, lineDash: [5, 5]}),
     }))
     routeSource.addFeature(routeFeature)
 
@@ -829,7 +922,7 @@ const clearWaypoints = () => {
 }
 
 // Survey utility functions - Mission Planner style lawnmower pattern
-const generateLawnmowerGrid = (waypoints) => {
+const generateLawnmowerGrid = waypoints => {
   if (!waypoints || waypoints.length < 3) return []
 
   const sortedWaypoints = [...waypoints].sort((a, b) => a.seq - b.seq)
@@ -857,11 +950,11 @@ const generateLawnmowerGrid = (waypoints) => {
   while (currentLat <= maxLat && lineCount < 50) {
     const lineCoords = [
       fromLonLat([minLon, currentLat]),
-      fromLonLat([maxLon, currentLat])
+      fromLonLat([maxLon, currentLat]),
     ]
 
     const gridFeature = new Feature({
-      geometry: new LineString(lineCoords)
+      geometry: new LineString(lineCoords),
     })
 
     // Apply style directly to each feature to ensure visibility
@@ -869,8 +962,8 @@ const generateLawnmowerGrid = (waypoints) => {
       stroke: new Stroke({
         color: '#2196F3',
         width: 4,
-        lineDash: [10, 5]
-      })
+        lineDash: [10, 5],
+      }),
     }))
 
     gridLines.push(gridFeature)
@@ -892,30 +985,31 @@ const saveSurveyedArea = async (waypoints, vehicleId) => {
       ? findClosestWaypoint(waypoints, vehiclePosition)
       : 1
 
-    // Generate filename with proper format: <site-name>_<waypoint-no>_DD-MM-YY-HH:MM:SS
+    // Fetch mission waypoints to determine mission_waypoint_id
+    const missionWaypoints = await fetchDroneMissionWaypoints('drone')
+    const missionWaypointId = findClosestMissionWaypoint(missionWaypoints, vehiclePosition) || closestWaypointNum
+
+    // Generate consolidated filename format: site-<site-name>-drone-surveyed-waypoints.json
     const siteName = 'site-ol-pejeta' // Use a default site name, could be made configurable
-    const filename = generateSurveyFilename(siteName, closestWaypointNum, timestamp)
+    const filename = generateSurveyFilename(siteName)
 
     const surveyData = {
       id: surveyId,
       waypoints: waypoints.map(wp => ({lat: wp.lat, lon: wp.lon, seq: wp.seq})),
       vehicleId: String(vehicleId) || 'unknown',
       completedAt: timestamp.toISOString(),
-      siteName: siteName,
+      siteName,
       closestWaypoint: closestWaypointNum,
+      mission_waypoint_id: missionWaypointId,
     }
 
-    // Try to save to file system first
+    // Save to JSON file
     try {
       await saveSurveyToFile(surveyData, filename)
       console.log(`Survey saved to file: ${filename}`)
     } catch (fileError) {
-      console.warn('Failed to save to file system, falling back to localStorage:', fileError)
-
-      // Fallback to localStorage
-      const existingData = JSON.parse(localStorage.getItem('ol_pejeta_surveys') || '{}')
-      existingData[surveyId] = surveyData
-      localStorage.setItem('ol_pejeta_surveys', JSON.stringify(existingData))
+      console.error('Failed to save survey file:', fileError)
+      throw fileError
     }
 
   } catch (error) {
@@ -923,17 +1017,8 @@ const saveSurveyedArea = async (waypoints, vehicleId) => {
   }
 }
 
-const loadSurveyedAreas = () => {
-  try {
-    const data = JSON.parse(localStorage.getItem('ol_pejeta_surveys') || '{}')
-    return Object.values(data)
-  } catch (error) {
-    console.error('Error loading surveyed areas:', error)
-    return []
-  }
-}
 
-const displaySurveyGrid = (waypoints) => {
+const displaySurveyGrid = waypoints => {
   if (!surveyGridSource || !waypoints || waypoints.length < 3) return
 
   surveyGridSource.clear()
@@ -944,7 +1029,7 @@ const displaySurveyGrid = (waypoints) => {
   }
 }
 
-const displayCompletedSurvey = (waypoints) => {
+const displayCompletedSurvey = waypoints => {
   if (!completedSurveySource || !waypoints || waypoints.length < 3) return
 
   // Filter out any invalid waypoints with null/undefined coordinates
@@ -955,48 +1040,89 @@ const displayCompletedSurvey = (waypoints) => {
   )
 
   if (validWaypoints.length < 3) {
-    console.warn("Not enough valid waypoints to form survey polygon")
+    console.warn('Not enough valid waypoints to form survey polygon')
     return
   }
 
-  // Convert waypoints to map coordinates with validation
-  const coordinates = validWaypoints.map(wp => {
-    const coord = fromLonLat([wp.lon, wp.lat])
-    // Validate converted coordinates
-    if (!isFinite(coord[0]) || !isFinite(coord[1])) {
-      console.warn(`Invalid coordinate conversion for waypoint: ${wp.lat}, ${wp.lon}`)
-      return null
-    }
-    return coord
-  }).filter(coord => coord !== null)
+  // Sort waypoints by sequence if available
+  const sortedWaypoints = validWaypoints.sort((a, b) => (a.seq || 0) - (b.seq || 0));
 
-  if (coordinates.length < 3) {
-    console.warn("Not enough valid coordinates after conversion")
-    return
-  }
+  // Create boundary coordinates for polygon (rectangular boundary)
+  const lats = sortedWaypoints.map(wp => wp.lat);
+  const lons = sortedWaypoints.map(wp => wp.lon);
 
-  // Calculate the convex hull to represent the surveyed area as a clean polygon
-  const hullCoordinates = calculateConvexHull([...coordinates]); // Create copy to avoid mutation
+  const minLat = Math.min(...lats);
+  const maxLat = Math.max(...lats);
+  const minLon = Math.min(...lons);
+  const maxLon = Math.max(...lons);
 
-  // A valid polygon needs at least 3 unique points to form an area.
-  if (hullCoordinates.length < 3) {
-    console.warn("Not enough unique points to form a valid survey area polygon.");
-    return;
-  }
+  const boundaryPoints = [
+    [minLon, minLat],
+    [maxLon, minLat],
+    [maxLon, maxLat],
+    [minLon, maxLat],
+    [minLon, minLat]  // Close the polygon
+  ];
 
-  // Close the polygon shape by adding the first point to the end of the array
-  hullCoordinates.push(hullCoordinates[0])
+  // Convert boundary coordinates to map projection
+  const boundaryCoords = boundaryPoints.map(coord => fromLonLat(coord));
 
+  // Create the survey polygon feature (rectangular boundary)
   const surveyPolygon = new Feature({
-    geometry: new Polygon([hullCoordinates]) // Note the double array for Polygon geometry
-  })
+    geometry: new Polygon([boundaryCoords]),
+    type: 'survey_boundary'
+  });
 
-  completedSurveySource.addFeature(surveyPolygon)
+  // Create flight path connecting waypoints in sequence
+  const waypointCoords = sortedWaypoints.map(wp => {
+    const coord = fromLonLat([wp.lon, wp.lat]);
+    if (!isFinite(coord[0]) || !isFinite(coord[1])) {
+      console.warn(`Invalid coordinate conversion for waypoint: ${wp.lat}, ${wp.lon}`);
+      return null;
+    }
+    return coord;
+  }).filter(coord => coord !== null);
+
+  if (waypointCoords.length >= 2) {
+    const flightPath = new Feature({
+      geometry: new LineString(waypointCoords),
+      type: 'flight_path'
+    });
+    completedSurveySource.addFeature(flightPath);
+  }
+
+  // Create individual waypoint features
+  const waypointFeatures = sortedWaypoints.map((wp, index) => {
+    const coord = fromLonLat([wp.lon, wp.lat]);
+
+    if (!isFinite(coord[0]) || !isFinite(coord[1])) {
+      return null;
+    }
+
+    return new Feature({
+      geometry: new Point(coord),
+      type: 'waypoint',
+      sequence: wp.seq || index,
+      altitude: wp.alt || 0,
+      name: `Waypoint ${wp.seq || index}`,
+      lat: wp.lat,
+      lon: wp.lon
+    });
+  }).filter(feature => feature !== null);
+
+  // Add all features to the source
+  completedSurveySource.addFeature(surveyPolygon);
+
+  if (waypointFeatures.length > 0) {
+    completedSurveySource.addFeatures(waypointFeatures);
+  }
+
+  console.log(`Survey displayed with ${waypointFeatures.length} waypoints and rectangular boundary polygon`);
 }
 
 const loadExistingSurveys = async () => {
   try {
-    // Try to load from file system first
+    // Load surveys from file system only
     const fileSurveys = await loadSurveysFromFiles()
 
     if (fileSurveys.length > 0) {
@@ -1007,57 +1133,13 @@ const loadExistingSurveys = async () => {
         }
       })
     } else {
-      // Fallback to localStorage if no file surveys found
-      console.log('No file surveys found, loading from localStorage')
-      const localSurveys = loadSurveyedAreas()
-      localSurveys.forEach(survey => {
-        if (survey.waypoints) {
-          displayCompletedSurvey(survey.waypoints)
-        }
-      })
+      console.log('No survey files found')
     }
   } catch (error) {
     console.error('Error loading existing surveys:', error)
-    // Final fallback to localStorage
-    const localSurveys = loadSurveyedAreas()
-    localSurveys.forEach(survey => {
-      if (survey.waypoints) {
-        displayCompletedSurvey(survey.waypoints)
-      }
-    })
   }
 }
 
-const calculateConvexHull = (points) => {
-  // Sort points lexicographically (by x, then y) to ensure a consistent order.
-  points.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-
-  const crossProduct = (o, a, b) => {
-    return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
-  };
-
-  // Build the lower hull
-  const lower = [];
-  for (const p of points) {
-    while (lower.length >= 2 && crossProduct(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) {
-      lower.pop();
-    }
-    lower.push(p);
-  }
-
-  // Build the upper hull
-  const upper = [];
-  for (let i = points.length - 1; i >= 0; i--) {
-    const p = points[i];
-    while (upper.length >= 2 && crossProduct(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) {
-      upper.pop();
-    }
-    upper.push(p);
-  }
-
-  // Combine the hulls and remove the duplicate start/end points.
-  return lower.slice(0, -1).concat(upper.slice(0, -1));
-};
 // Map initialization
 const initializeFeatures = () => {
   // Create vector source for all dynamic features
@@ -1065,7 +1147,7 @@ const initializeFeatures = () => {
 
   // Create drone feature
   droneFeature = new Feature({
-    geometry: new Point([0, 0])
+    geometry: new Point([0, 0]),
   })
   droneFeature.setStyle(new Style({
     image: new Icon({
@@ -1074,12 +1156,12 @@ const initializeFeatures = () => {
       anchor: [0.5, 0.5],
       anchorXUnits: 'fraction',
       anchorYUnits: 'fraction',
-    })
+    }),
   }))
 
   // Create vehicle feature
   vehicleFeature = new Feature({
-    geometry: new Point([0, 0])
+    geometry: new Point([0, 0]),
   })
   vehicleFeature.setStyle(new Style({
     image: new Icon({
@@ -1095,13 +1177,13 @@ const initializeFeatures = () => {
       font: '12px Arial',
       fill: new Fill({color: '#000'}),
       stroke: new Stroke({color: '#fff', width: 2}),
-      offsetY: -35
-    })
+      offsetY: -35,
+    }),
   }))
 
   // Create safety radius feature
   safetyRadiusFeature = new Feature({
-    geometry: new Circle([0, 0], 500) // Radius in map units
+    geometry: new Circle([0, 0], 500), // Radius in map units
   })
   safetyRadiusFeature.setStyle(new Style({
     stroke: new Stroke({
@@ -1116,7 +1198,7 @@ const initializeFeatures = () => {
 
   // Create distance line feature
   distanceLineFeature = new Feature({
-    geometry: new LineString([[0, 0], [0, 0]])
+    geometry: new LineString([[0, 0], [0, 0]]),
   })
   distanceLineFeature.setStyle(new Style({
     stroke: new Stroke({
@@ -1127,7 +1209,7 @@ const initializeFeatures = () => {
 
   // Create distance label feature
   distanceLabelFeature = new Feature({
-    geometry: new Point([0, 0])
+    geometry: new Point([0, 0]),
   })
   distanceLabelFeature.setStyle(new Style({
     text: new Text({
@@ -1178,27 +1260,27 @@ const initMap = () => {
   // Create main vector layer for vehicles and indicators
   vectorLayer = new VectorLayer({
     source: vectorSource,
-    zIndex: 15
+    zIndex: 15,
   })
 
   // Create waypoint sources and layers
   waypointSource = new VectorSource()
   waypointLayer = new VectorLayer({
     source: waypointSource,
-    zIndex: 10
+    zIndex: 10,
   })
 
   routeSource = new VectorSource()
   routeLayer = new VectorLayer({
     source: routeSource,
-    zIndex: 5
+    zIndex: 5,
   })
 
   // Create survey sources and layers
   surveyGridSource = new VectorSource()
   surveyGridLayer = new VectorLayer({
     source: surveyGridSource,
-    zIndex: 20 // High z-index to ensure visibility above other layers
+    zIndex: 20, // High z-index to ensure visibility above other layers
   })
 
   completedSurveySource = new VectorSource()
@@ -1206,14 +1288,14 @@ const initMap = () => {
     source: completedSurveySource,
     style: new Style({
       fill: new Fill({
-        color: 'rgba(76, 175, 80, 0.3)'
+        color: 'rgba(76, 175, 80, 0.3)',
       }),
       stroke: new Stroke({
         color: '#4CAF50',
-        width: 2
-      })
+        width: 2,
+      }),
     }),
-    zIndex: 2
+    zIndex: 2,
   })
 
   // Initialize map
@@ -1227,7 +1309,7 @@ const initMap = () => {
       routeLayer,
       vectorLayer,
       surveyGridLayer, // Move survey grid layer to render above other features
-      waypointLayer
+      waypointLayer,
     ],
     view: new View({
       center: fromLonLat([36.9759, 0.0078]), // Ol Pejeta coordinates
@@ -1248,7 +1330,7 @@ const initMap = () => {
     }, 1000)
   })
 
-  map.on('movestart', (evt) => {
+  map.on('movestart', evt => {
     if (evt.frameState && evt.frameState.viewHints[0] > 0) {
       isUserInteracting = true
       followVehicle.value = false
@@ -1269,14 +1351,14 @@ watch(() => props.droneTelemetryData, updateDroneFromTelemetry, {deep: true})
 watch(() => props.vehicleTelemetryData, updateVehicleFromTelemetry, {deep: true})
 watch(() => props.distance, updateMapFeatures)
 watch(() => props.isDroneFollowing, () => vectorSource?.changed())
-watch(() => props.vehicleWaypoints, (waypoints) => {
+watch(() => props.vehicleWaypoints, waypoints => {
   if (waypoints && Object.keys(waypoints).length > 0) {
     updateWaypointsOnMap(waypoints)
   } else {
     clearWaypoints()
   }
 }, {deep: true})
-watch(followVehicle, (isFollowing) => {
+watch(followVehicle, isFollowing => {
   // `isFollowing` will be `true` when the button is activated.
   if (isFollowing) {
     // When 'Follow Vehicle' is turned on, turn 'Follow Drone' off.
@@ -1294,7 +1376,7 @@ watch(followVehicle, (isFollowing) => {
   }
 });
 
-watch(followDrone, (isFollowing) => {
+watch(followDrone, isFollowing => {
   // `isFollowing` will be `true` when the button is activated.
   if (isFollowing) {
     // When 'Follow Drone' is turned on, turn 'Follow Vehicle' off.
@@ -1314,7 +1396,7 @@ watch(followDrone, (isFollowing) => {
 
 
 // Survey grid management - show grid when waypoints exist, hide when cleared
-watch(() => props.droneMissionWaypoints, (waypoints) => {
+watch(() => props.droneMissionWaypoints, waypoints => {
   if (waypoints && waypoints.length > 2) {
     displaySurveyGrid(waypoints);
   } else if (surveyGridSource) {
@@ -1322,17 +1404,32 @@ watch(() => props.droneMissionWaypoints, (waypoints) => {
   }
 }, {deep: true, immediate: true});
 
-// Survey completion handler - save completed survey and show as green polygon
-watch(() => props.surveyComplete, (isComplete, wasComplete) => {
+// Survey completion handler - save completed survey, show as green polygon, and clear mission
+watch(() => props.surveyComplete, async (isComplete, wasComplete) => {
   if (isComplete && !wasComplete && props.droneMissionWaypoints.length > 2) {
     const waypoints = props.droneMissionWaypoints;
     const droneId = props.droneTelemetryData?.vehicle_id || 'unknown';
 
-    saveSurveyedArea(waypoints, droneId);
-    displayCompletedSurvey(waypoints);
+    try {
+      // Backend now handles file saving automatically
 
-    if (surveyGridSource) {
-      surveyGridSource.clear();
+      // Display completed survey as green polygon
+      displayCompletedSurvey(waypoints);
+
+      // Clear the survey grid
+      if (surveyGridSource) {
+        surveyGridSource.clear();
+      }
+
+      // Clear the mission from the drone to remove blue dotted lines
+      const missionCleared = await clearDroneMission('drone');
+      if (missionCleared) {
+        console.log('Survey completed and mission cleared successfully');
+      } else {
+        console.warn('Survey completed but failed to clear mission');
+      }
+    } catch (error) {
+      console.error('Error during survey completion:', error);
     }
   }
 });

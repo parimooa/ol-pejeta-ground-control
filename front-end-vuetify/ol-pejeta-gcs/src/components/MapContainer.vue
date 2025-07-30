@@ -400,7 +400,6 @@ import {
 // Import survey file utilities
 import {
   findClosestWaypoint,
-  generateSurveyFilename,
   loadSurveysFromFiles,
   saveSurveyToFile,
 } from '@/utils/SurveyFileUtils'
@@ -988,11 +987,6 @@ const saveSurveyedArea = async (waypoints, vehicleId) => {
     // Fetch mission waypoints to determine mission_waypoint_id
     const missionWaypoints = await fetchDroneMissionWaypoints('drone')
     const missionWaypointId = findClosestMissionWaypoint(missionWaypoints, vehiclePosition) || closestWaypointNum
-
-    // Generate consolidated filename format: site-<site-name>-drone-surveyed-waypoints.json
-    const siteName = 'site-ol-pejeta' // Use a default site name, could be made configurable
-    const filename = generateSurveyFilename(siteName)
-
     const surveyData = {
       id: surveyId,
       waypoints: waypoints.map(wp => ({lat: wp.lat, lon: wp.lon, seq: wp.seq})),

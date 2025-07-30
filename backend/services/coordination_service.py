@@ -40,6 +40,8 @@ class CoordinationService:
         self.current_site_name = (
             configured_site_name  # Site name from settings for waypoint persistence
         )
+        self._survey_start_time = None
+        self._survey_end_time = None
 
     @staticmethod
     def _calculate_distance(pos1, pos2) -> float:
@@ -94,7 +96,21 @@ class CoordinationService:
             timestamp = datetime.now()
             survey_id = f"survey_{drone.vehicle_id}_{int(timestamp.timestamp())}"
 
-            # Get car position for closest waypoint calculation
+            duration_seconds = None
+            duration_formatted = None
+
+            if self._survey_start_time and self._survey_end_time:
+                duration_seconds = (self._survey_end_time - self._survey_start_time).total_seconds()
+
+                # Format duration as HH:MM:SS
+                hours = int(duration_seconds // 3600)
+                minutes = int((duration_seconds % 3600) // 60)
+                seconds = int(duration_seconds % 60)
+                duration_formatted = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+                print(f"⏱️ Survey duration: {duration_formatted} ({duration_seconds:.1f} seconds)")
+
+            # Get car position for the closest waypoint calculation
             car_position = car.position()
             car_waypoints = car.mission_waypoints
             closest_waypoint_id = self._find_closest_car_waypoint(
@@ -125,6 +141,11 @@ class CoordinationService:
                 "closestWaypoint": closest_waypoint_id,
                 "scan_abandoned": survey_service.scan_abandoned,
                 "savedAt": timestamp.isoformat(),
+                "startTime": self._survey_start_time.isoformat() if self._survey_start_time else None,
+                "endTime": self._survey_end_time.isoformat() if self._survey_end_time else None,
+                "durationSeconds": duration_seconds,
+                "durationFormatted": duration_formatted,
+
             }
 
             # Load existing survey data if file exists
@@ -231,8 +252,20 @@ class CoordinationService:
             # Check if drone is currently surveying
             is_surveying = self._is_drone_surveying(drone)
 
+            if is_surveying and not self._last_survey_mode_state:
+                self._survey_start_time = datetime.now()
+                print(f"📊 Survey started at: {self._survey_start_time.isoformat()}")
+                telemetry_manager.broadcast_event(
+                    {
+                        "event": "survey_started",
+                        "start_time": self._survey_start_time.isoformat(),
+                        "message": "Survey mission started"
+                    }
+                )
+
             # Check for survey completion (transition from surveying to not surveying)
             if self._last_survey_mode_state and not is_surveying:
+                self._survey_end_time = datetime.now()
                 print("🎉 Survey completed - drone switched back to GUIDED mode")
 
                 # Save completed survey data to file
@@ -246,6 +279,7 @@ class CoordinationService:
                 telemetry_manager.broadcast_event(
                     {
                         "event": "survey_completed",
+                        "end_time": self._survey_end_time.isoformat(),
                         "message": "Survey mission completed successfully",
                     }
                 )
@@ -424,6 +458,10 @@ class CoordinationService:
             print("Vehicles not available for survey")
             return False
 
+        # Reset timing variables for new survey
+        self._survey_start_time = None
+        self._survey_end_time = None
+
         # Get current car position as survey center
         car_pos = car.position()
         if not car_pos or not car_pos.get("latitude"):
@@ -467,7 +505,7 @@ class CoordinationService:
         success = await survey_service.execute_proximity_survey(
             survey_center,
             max_distance_from_center=self.max_distance
-            * 0.8,  # 80% of max distance for safety
+                                     * 0.8,  # 80% of max distance for safety
         )
 
         # Clear the flag when survey completes

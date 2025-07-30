@@ -6,18 +6,6 @@
 // Survey storage configuration
 const SURVEY_API_BASE = 'http://localhost:8000'
 
-/**
- * Generate a consolidated filename for drone survey data per site
- * Format: site-<site-name>-drone-surveyed-waypoints.json (single file per site)
- * @param {string} siteName - The site name (e.g., "Site Ol Pejeta")
- * @returns {string} The generated filename
- */
-export function generateSurveyFilename (siteName) {
-  // Clean site name (remove spaces, special characters)
-  const cleanSiteName = siteName.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '').toLowerCase()
-
-  return `site-${cleanSiteName}-drone-surveyed-waypoints.json`
-}
 
 /**
  * Find the closest waypoint to the current vehicle position
@@ -162,28 +150,3 @@ export async function deleteSurveyFile (filename) {
   }
 }
 
-/**
- * List all available survey files via backend API
- * @returns {Promise<Array>} Promise that resolves with array of filenames
- */
-export async function listSurveyFiles () {
-  try {
-    const response = await fetch(`${SURVEY_API_BASE}/survey/list`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    })
-
-    if (!response.ok) {
-      throw new Error(`Failed to list surveys: ${response.statusText}`)
-    }
-
-    const filenames = await response.json()
-    console.log(`Found ${filenames.length} survey files`)
-    return filenames
-  } catch (error) {
-    console.error('Error listing survey files:', error)
-    return []
-  }
-}

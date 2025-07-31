@@ -3,8 +3,10 @@
  * Utilities for handling file-based survey storage
  */
 
+import { API_CONSTANTS, PHYSICAL_CONSTANTS } from '@/config/constants.js'
+
 // Survey storage configuration
-const SURVEY_API_BASE = 'http://localhost:8000'
+const SURVEY_API_BASE = API_CONSTANTS.BASE_URL
 
 
 /**
@@ -48,7 +50,7 @@ export function findClosestWaypoint (waypoints, vehiclePosition) {
  * @returns {number} Distance in meters
  */
 function calculateDistance (lat1, lon1, lat2, lon2) {
-  const R = 6371000 // Earth's radius in meters
+  const R = PHYSICAL_CONSTANTS.EARTH_RADIUS_METERS
   const toRad = value => (value * Math.PI) / 180
 
   const dLat = toRad(lat2 - lat1)

@@ -384,6 +384,13 @@ import * as ol from 'ol/extent'
 
 import droneIcon from '@/assets/drone.png'
 import vehicleIcon from '@/assets/car_top_view.png'
+import {
+  API_CONSTANTS,
+  TIMING_CONSTANTS,
+  SURVEY_CONSTANTS,
+  PHYSICAL_CONSTANTS,
+  MAP_CONSTANTS
+} from '@/config/constants.js'
 
 // Import offline map utilities
 import {
@@ -521,7 +528,7 @@ const offlineAreaRadius = ref(5) // 5km radius by default
 
 // Following system variables
 let lastFollowUpdate = 0
-const followUpdateThrottle = 100 // milliseconds between follow updates
+const followUpdateThrottle = TIMING_CONSTANTS.FOLLOW_UPDATE_THROTTLE
 let isUserInteracting = false
 
 // Helper computed properties
@@ -547,7 +554,7 @@ const startCoordination = async () => {
   coordinationLoading.value = true
 
   try {
-    const response = await fetch('http://localhost:8000/coordination/start', {
+    const response = await fetch(`${API_CONSTANTS.BASE_URL}/coordination/start`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -591,7 +598,7 @@ const stopCoordination = async () => {
   showStopConfirmation.value = false
 
   try {
-    const response = await fetch('http://localhost:8000/coordination/stop', {
+    const response = await fetch(`${API_CONSTANTS.BASE_URL}/coordination/stop`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -612,7 +619,7 @@ const stopCoordination = async () => {
 // Function to fetch drone mission waypoints from REST endpoint
 const fetchDroneMissionWaypoints = async (vehicleType = 'drone') => {
   try {
-    const response = await fetch(`http://localhost:8000/vehicles/${vehicleType}/mission/waypoints`, {
+    const response = await fetch(`${API_CONSTANTS.BASE_URL}/vehicles/${vehicleType}/mission/waypoints`, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
@@ -662,7 +669,7 @@ const findClosestMissionWaypoint = (missionWaypoints, vehiclePosition) => {
 
 // Haversine distance calculation for mission waypoints
 const calculateDistance = (lat1, lon1, lat2, lon2) => {
-  const R = 6371000 // Earth's radius in meters
+  const R = PHYSICAL_CONSTANTS.EARTH_RADIUS_METERS
   const toRad = value => (value * Math.PI) / 180
 
   const dLat = toRad(lat2 - lat1)
@@ -680,7 +687,7 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
 // Function to clear mission waypoints from vehicle after survey completion
 const clearDroneMission = async (vehicleType = 'drone') => {
   try {
-    const response = await fetch(`http://localhost:8000/vehicles/${vehicleType}/mission/clear`, {
+    const response = await fetch(`${API_CONSTANTS.BASE_URL}/vehicles/${vehicleType}/mission/clear`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -907,7 +914,7 @@ const updateWaypointsOnMap = waypointsObj => {
     if (!hasAutoFittedWaypoints) {
       const extent = routeSource.getExtent()
       if (extent && !ol.isEmpty(extent)) {
-        map.getView().fit(extent, {padding: [50, 50, 50, 50], duration: 500})
+        map.getView().fit(extent, {padding: [50, 50, 50, 50], duration: TIMING_CONSTANTS.MAP_FIT_DURATION})
         hasAutoFittedWaypoints = true
       }
     }
@@ -938,7 +945,7 @@ const generateLawnmowerGrid = waypoints => {
 
   // Calculate appropriate spacing based on survey area size
   const estimatedAreaSize = Math.max(latRange * 111320, lonRange * 111320 * Math.cos(minLat * Math.PI / 180))
-  const spacing = estimatedAreaSize < 500 ? 25 : 50 // 25m for small areas, 50m for larger areas
+  const spacing = estimatedAreaSize < SURVEY_CONSTANTS.AREA_SIZE_THRESHOLD ? SURVEY_CONSTANTS.GRID_SPACING_SMALL : SURVEY_CONSTANTS.GRID_SPACING_LARGE
   const latSpacing = spacing / 111320 // Convert spacing from meters to degrees
 
   const gridLines = []
@@ -946,7 +953,7 @@ const generateLawnmowerGrid = waypoints => {
   let lineCount = 0
 
   // Generate horizontal lawnmower pattern lines
-  while (currentLat <= maxLat && lineCount < 50) {
+  while (currentLat <= maxLat && lineCount < SURVEY_CONSTANTS.MAX_SURVEY_LINES) {
     const lineCoords = [
       fromLonLat([minLon, currentLat]),
       fromLonLat([maxLon, currentLat]),
@@ -1177,7 +1184,7 @@ const initializeFeatures = () => {
 
   // Create safety radius feature
   safetyRadiusFeature = new Feature({
-    geometry: new Circle([0, 0], 500), // Radius in map units
+    geometry: new Circle([0, 0], SURVEY_CONSTANTS.DEFAULT_CIRCLE_RADIUS), // Radius in map units
   })
   safetyRadiusFeature.setStyle(new Style({
     stroke: new Stroke({
@@ -1321,7 +1328,7 @@ const initMap = () => {
   map.on('pointerup', () => {
     setTimeout(() => {
       isUserInteracting = false
-    }, 1000)
+    }, TIMING_CONSTANTS.STARTUP_DELAY)
   })
 
   map.on('movestart', evt => {
@@ -1335,7 +1342,7 @@ const initMap = () => {
   map.on('moveend', () => {
     setTimeout(() => {
       isUserInteracting = false
-    }, 500)
+    }, TIMING_CONSTANTS.MAP_FIT_DURATION)
   })
 }
 
@@ -1430,7 +1437,7 @@ onMounted(() => {
   initMap()
   updateOfflineTileCounts()
   addConnectivityListeners(handleOnlineStatus, handleOfflineStatus)
-  setTimeout(loadExistingSurveys, 1000)
+  setTimeout(loadExistingSurveys, TIMING_CONSTANTS.STARTUP_DELAY)
 })
 
 onUnmounted(() => {

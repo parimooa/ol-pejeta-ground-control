@@ -2,12 +2,12 @@
   <v-app>
     <v-app-bar app class="px-4" color="#1a3a5c">
       <div class="text-h6 font-weight-medium">Ol Pejeta GCS</div>
-      <v-spacer />
+      <v-spacer/>
 
       <!-- Drone Status and Controls -->
       <div class="d-flex align-center mr-4">
-        <v-icon class="mr-2" :color="isDroneConnected ? 'success' : 'error'" icon="mdi-quadcopter" />
-        <span class="text-subtitle-2 font-weight-medium" :class="isDroneConnected ? 'text-success' : 'text-error'">
+        <v-icon :color="isDroneConnected ? 'success' : 'error'" class="mr-2" icon="mdi-quadcopter"/>
+        <span :class="isDroneConnected ? 'text-success' : 'text-error'" class="text-subtitle-2 font-weight-medium">
           {{ isDroneConnected ? 'Drone Connected' : 'Drone Disconnected' }}
         </span>
         <v-btn
@@ -34,8 +34,8 @@
 
       <!-- Vehicle Status and Controls -->
       <div class="d-flex align-center mr-4">
-        <v-icon class="mr-2" :color="isVehicleConnected ? 'success' : 'error'" icon="mdi-car" />
-        <span class="text-subtitle-2 font-weight-medium" :class="isVehicleConnected ? 'text-success' : 'text-error'">
+        <v-icon :color="isVehicleConnected ? 'success' : 'error'" class="mr-2" icon="mdi-car"/>
+        <span :class="isVehicleConnected ? 'text-success' : 'text-error'" class="text-subtitle-2 font-weight-medium">
           {{ isVehicleConnected ? 'Vehicle Connected' : 'Vehicle Disconnected' }}
         </span>
         <v-btn
@@ -64,8 +64,8 @@
         <v-tab
           v-for="(item, index) in navItems"
           :key="index"
-          class="text-white text-subtitle-1 font-weight-medium"
           :value="index"
+          class="text-white text-subtitle-1 font-weight-medium"
         >
           {{ item.label }}
         </v-tab>
@@ -87,7 +87,6 @@
     <v-main>
       <div class="d-flex drone-tracking-container">
         <MapContainer
-          class="flex-grow-1"
           :distance="distance"
           :drone-mission-waypoints="currentMissionWaypoints"
           :drone-telemetry-data="droneData"
@@ -99,6 +98,7 @@
           :survey-complete="isSurveyComplete"
           :vehicle-telemetry-data="vehicleData"
           :vehicle-waypoints="Object.values(missionWaypoints.car || {})"
+          class="flex-grow-1"
           @coordination-status="handleCoordinationStatus"
         />
       </div>
@@ -106,8 +106,8 @@
     <v-snackbar
       v-model="showSnackbar"
       :color="snackbarColor"
-      location="top"
       :timeout="4000"
+      location="top"
     >
       {{ snackbarMessage }}
     </v-snackbar>
@@ -116,894 +116,917 @@
 </template>
 
 <script setup>
-  import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-  import InfoPanel from './components/InfoPanel.vue'
-  import MapContainer from './components/MapContainer.vue'
+import {computed, onBeforeUnmount, onMounted, reactive, ref, watch} from 'vue'
+import InfoPanel from './components/InfoPanel.vue'
+import MapContainer from './components/MapContainer.vue'
+import {
+  DISTANCE_CONSTANTS,
+  CONNECTION_CONSTANTS,
+  API_CONSTANTS,
+  TIMING_CONSTANTS,
+  PHYSICAL_CONSTANTS,
+  WEBSOCKET_CONSTANTS
+} from '@/config/constants.js'
 
-  const surveyInProgress = ref(false)
+const surveyInProgress = ref(false)
 
-  // Navigation state
-  const activeTab = ref(0)
-  const navItems = ref([
-    { label: 'Dashboard' },
-    { label: 'History' },
-    { label: 'Settings' },
-  ])
+// Navigation state
+const activeTab = ref(0)
+const navItems = ref([
+  {label: 'Dashboard'},
+  {label: 'History'},
+  {label: 'Settings'},
+])
 
-  // Reactive telemetry data object matching your API structure
-  const droneData = reactive({
-    position: {
-      latitude: null,
-      longitude: null,
-      altitude_msl: 0,
-      relative_altitude: 0,
-    },
-    velocity: {
-      vx: 0,
-      vy: 0,
-      vz: 0,
-      ground_speed: 0,
-      heading: 0,
-    },
-    battery: {
-      voltage: 0,
-      remaining_percentage: 100,
-    },
-    mission: {
-      current_wp_seq: 0,
-      next_wp_seq: 1,
-      distance_to_wp: 0,
-      progress_percentage: 0,
-      total_waypoints: 0,
-    },
-    heartbeat: {
-      timestamp: null,
-      flight_mode: null,
-      system_status: null,
-      armed: null,
-      guided_enabled: null,
-      custom_mode: null,
-      mavlink_version: null,
-    },
-    vehicle_id: null,
-  })
-  const vehicleData = reactive({
-    position: {
-      latitude: null,
-      longitude: null,
-      altitude_msl: 0,
-      relative_altitude: 0,
-    },
-    velocity: {
-      vx: 0,
-      vy: 0,
-      vz: 0,
-      ground_speed: 0,
-      heading: 0,
-    },
-    battery: {
-      voltage: 0,
-      remaining_percentage: 100,
-    },
-    mission: {
-      current_wp_seq: 0,
-      next_wp_seq: 1,
-      distance_to_wp: 0,
-      progress_percentage: 0,
-      total_waypoints: 0,
-      visited_waypoints: [], // <--
-    },
-    heartbeat: {
-      timestamp: null,
-      flight_mode: null,
-      system_status: null,
-      armed: null,
-      guided_enabled: null,
-      custom_mode: null,
-      mavlink_version: null,
-    },
-    vehicle_id: null,
-  })
+// Reactive telemetry data object matching your API structure
+const droneData = reactive({
+  position: {
+    latitude: null,
+    longitude: null,
+    altitude_msl: 0,
+    relative_altitude: 0,
+  },
+  velocity: {
+    vx: 0,
+    vy: 0,
+    vz: 0,
+    ground_speed: 0,
+    heading: 0,
+  },
+  battery: {
+    voltage: 0,
+    remaining_percentage: 100,
+  },
+  mission: {
+    current_wp_seq: 0,
+    next_wp_seq: 1,
+    distance_to_wp: 0,
+    progress_percentage: 0,
+    total_waypoints: 0,
+  },
+  heartbeat: {
+    timestamp: null,
+    flight_mode: null,
+    system_status: null,
+    armed: null,
+    guided_enabled: null,
+    custom_mode: null,
+    mavlink_version: null,
+  },
+  vehicle_id: null,
+})
+const vehicleData = reactive({
+  position: {
+    latitude: null,
+    longitude: null,
+    altitude_msl: 0,
+    relative_altitude: 0,
+  },
+  velocity: {
+    vx: 0,
+    vy: 0,
+    vz: 0,
+    ground_speed: 0,
+    heading: 0,
+  },
+  battery: {
+    voltage: 0,
+    remaining_percentage: 100,
+  },
+  mission: {
+    current_wp_seq: 0,
+    next_wp_seq: 1,
+    distance_to_wp: 0,
+    progress_percentage: 0,
+    total_waypoints: 0,
+    visited_waypoints: [], // <--
+  },
+  heartbeat: {
+    timestamp: null,
+    flight_mode: null,
+    system_status: null,
+    armed: null,
+    guided_enabled: null,
+    custom_mode: null,
+    mavlink_version: null,
+  },
+  vehicle_id: null,
+})
 
-  // Another app state
-  const distance = ref(0)
-  const showSnackbar = ref(false)
-  const snackbarMessage = ref('')
-  const snackbarColor = ref('success')
+// Another app state
+const distance = ref(0)
+const showSnackbar = ref(false)
+const snackbarMessage = ref('')
+const snackbarColor = ref('success')
 
-  // Waypoint navigation state
-  const nextWaypointInfo = ref(null)
-  const waypointReached = ref(false)
+// Waypoint navigation state
+const nextWaypointInfo = ref(null)
+const waypointReached = ref(false)
 
-  // WebSocket connections
-  const wsConnections = reactive({
-    drone: null,
-    car: null,
-  })
-  const wsReconnectAttempts = ref(0)
-  const maxReconnectAttempts = 5
-  const isDroneConnected = ref(false)
-  const isVehicleConnected = ref(false)
-  let connectionCheckInterval = null
+// WebSocket connections
+const wsConnections = reactive({
+  drone: null,
+  car: null,
+})
+const wsReconnectAttempts = ref(0)
+const maxReconnectAttempts = 5
+const isDroneConnected = ref(false)
+const isVehicleConnected = ref(false)
+let connectionCheckInterval = null
 
-  // Coordination state
-  const isCoordinationActive = ref(false)
-  const isDroneFollowing = ref(false)
-  const surveyButtonEnabled = ref(false)
-  const surveyState = reactive({
-    isComplete: false,
-    completedWaypoints: [],
-  })
-  const instructionType = ref('info')
-  const surveyInitiated = ref(false)
+// Coordination state
+const isCoordinationActive = ref(false)
+const isDroneFollowing = ref(false)
+const surveyButtonEnabled = ref(false)
+const surveyState = reactive({
+  isComplete: false,
+  completedWaypoints: [],
+})
+const instructionType = ref('info')
+const surveyInitiated = ref(false)
 
-  const handleCoordinationStatus = event => {
-    showSnackbar.value = true
-    snackbarMessage.value = event.message
-    snackbarColor.value = event.type === 'success' ? 'success' : 'error'
+const handleCoordinationStatus = event => {
+  showSnackbar.value = true
+  snackbarMessage.value = event.message
+  snackbarColor.value = event.type === 'success' ? 'success' : 'error'
+}
+
+// Add computed property for survey completion
+const isSurveyComplete = computed(() => surveyState.isComplete)
+
+// Add computed property for drone surveying state
+const isDroneSurveying = computed(() => {
+  return surveyInProgress.value
+})
+
+// Get current mission waypoints from drone telemetry
+const currentMissionWaypoints = computed(() => {
+  const waypoints = missionWaypoints.drone || {}
+  return Object.values(waypoints).map(wp => ({
+    lat: wp.lat,
+    lon: wp.lon,
+    seq: wp.seq,
+  }))
+})
+
+
+// Vehicle info derived from telemetry data
+const vehicleLocation = ref('Site Ol Pejeta')
+const missionWaypoints = reactive({
+  drone: {},
+  car: {},
+})
+
+// Function to fetch mission waypoints separately
+const fetchMissionWaypoints = async vehicleType => {
+  try {
+    const response = await fetch(`${API_CONSTANTS.BASE_URL}/vehicles/${vehicleType}/mission/waypoints`)
+    const data = await response.json()
+    missionWaypoints[vehicleType] = data.mission_waypoints || {}
+  } catch (error) {
+    console.error(`Error fetching mission waypoints for ${vehicleType}:`, error)
   }
+}
+const fetchMissionProgress = async vehicleType => {
+  try {
+    const response = await fetch(`${API_CONSTANTS.BASE_URL}/vehicles/${vehicleType}/mission/progress`)
+    const data = await response.json()
 
-  // Add computed property for survey completion
-  const isSurveyComplete = computed(() => surveyState.isComplete)
-
-  // Add computed property for drone surveying state
-  const isDroneSurveying = computed(() => {
-    return surveyInProgress.value
-  })
-
-  // Get current mission waypoints from drone telemetry
-  const currentMissionWaypoints = computed(() => {
-    const waypoints = missionWaypoints.drone || {}
-    return Object.values(waypoints).map(wp => ({
-      lat: wp.lat,
-      lon: wp.lon,
-      seq: wp.seq,
-    }))
-  })
-
-
-  // Vehicle info derived from telemetry data
-  const vehicleLocation = ref('Site Ol Pejeta')
-  const missionWaypoints = reactive({
-    drone: {},
-    car: {},
-  })
-
-  // Function to fetch mission waypoints separately
-  const fetchMissionWaypoints = async vehicleType => {
-    try {
-      const response = await fetch(`http://localhost:8000/vehicles/${vehicleType}/mission/waypoints`)
-      const data = await response.json()
-      missionWaypoints[vehicleType] = data.mission_waypoints || {}
-    } catch (error) {
-      console.error(`Error fetching mission waypoints for ${vehicleType}:`, error)
-    }
-  }
-  const fetchMissionProgress = async vehicleType => {
-    try {
-      const response = await fetch(`http://localhost:8000/vehicles/${vehicleType}/mission/progress`)
-      const data = await response.json()
-
-      if (data.visited_waypoints) {
-        // Update the telemetry data with persisted progress
-        if (vehicleType === 'car') {
-          vehicleData.mission.visited_waypoints = data.visited_waypoints
-        } else {
-          droneData.mission.visited_waypoints = data.visited_waypoints
-        }
-
-        console.log(`📂 Loaded ${data.visited_waypoints.length} visited waypoints for ${vehicleType}`)
-      }
-    } catch (error) {
-      console.error(`Error fetching mission progress for ${vehicleType}:`, error)
-    }
-  }
-
-  // Instructions and mission steps
-  const instructions = ref('Vehicle position is currently safe. Maintain current position during drone operation.')
-  const missionSteps = ref([
-    { text: 'Drone take-off', status: 'completed' },
-    { text: 'Field scanning', status: 'current', progress: 45 },
-    { text: 'Data collection at points A, B, C', status: 'pending' },
-    { text: 'Return to base', status: 'pending' },
-  ])
-
-  // Helper functions for navigation instructions
-  const calculateBearing = (lat1, lon1, lat2, lon2) => {
-    const dLon = (lon2 - lon1) * Math.PI / 180
-    const lat1Rad = lat1 * Math.PI / 180
-    const lat2Rad = lat2 * Math.PI / 180
-
-    const y = Math.sin(dLon) * Math.cos(lat2Rad)
-    const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon)
-
-    const bearing = Math.atan2(y, x) * 180 / Math.PI
-    return (bearing + 360) % 360
-  }
-
-  const bearingToCompass = bearing => {
-    const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']
-    const index = Math.round(bearing / 22.5) % 16
-    return directions[index]
-  }
-
-  const bearingToDirection = bearing => {
-    const directions = [
-      'North', 'North-Northeast', 'Northeast', 'East-Northeast',
-      'East', 'East-Southeast', 'Southeast', 'South-Southeast',
-      'South', 'South-Southwest', 'Southwest', 'West-Southwest',
-      'West', 'West-Northwest', 'Northwest', 'North-Northwest',
-    ]
-    const index = Math.round(bearing / 22.5) % 16
-    return directions[index]
-  }
-
-  const getRelativeDirection = (currentHeading, targetBearing) => {
-    let relativeAngle = targetBearing - currentHeading
-    if (relativeAngle > 180) relativeAngle -= 360
-    if (relativeAngle < -180) relativeAngle += 360
-    return relativeAngle
-  }
-
-  const getDroneOperationalContext = () => {
-    const droneStatus = droneData.heartbeat
-    if (!droneStatus) return 'unknown'
-
-    const { armed, custom_mode, system_status } = droneStatus
-    const groundSpeed = droneData.velocity.ground_speed || 0
-
-    if (!armed) return 'idle'
-    if (armed && custom_mode === 3 && groundSpeed > 1) return 'mission_active' // AUTO mode with movement
-    if (armed && custom_mode === 4) return 'guided' // GUIDED mode
-    if (armed && system_status === 3) return 'armed_ready'
-
-    return 'active'
-  }
-
-  // Enhanced function to update operator instructions based on car/vehicle telemetry
-  const updateOperatorInstructions = () => {
-    if (!isVehicleConnected.value && !surveyInitiated.value) {
-      instructions.value = '⚠️ VEHICLE NOT CONNECTED: Please connect the ground vehicle to receive mission instructions.'
-      instructionType.value = 'warning'
-      return // Exit early, as no other instructions are relevant.
-    }
-
-    const droneContext = getDroneOperationalContext()
-    const vehicleHeading = vehicleData.velocity.heading
-    const vehicleSpeed = vehicleData.velocity.ground_speed || 0
-    const vehiclePos = vehicleData.position
-    const droneSpeed = droneData.velocity.ground_speed || 0
-
-    const missionData = vehicleData.mission
-    const currentWaypoint = missionData.current_wp_seq || 0
-    const totalWaypoints = missionData.total_waypoints || 0
-    const vehicleMissionWaypoints = missionWaypoints.car || {}
-
-
-    let instruction = 'Standby for mission instructions.'
-    instructionType.value = 'info' // Default type
-
-    // Check if a survey was just initiated (highest priority)
-    if (surveyInitiated.value && !isDroneSurveying.value) {
-      instruction = '🚁 SURVEY INITIATED: Drone is preparing to start survey mission. Maintain current position and avoid sudden movements.'
-      instructionType.value = 'survey'
-      instructions.value = instruction
-      return // Exit early for survey initiation message
-    }
-
-    // Check if the drone is surveying - this takes priority over other instructions
-    if (isDroneSurveying.value && vehicleSpeed < 0.5 && !isDroneFollowing.value) {
-      instruction = '🚁 SURVEY IN PROGRESS: Drone is actively surveying. Maintain current position and avoid sudden movements.'
-      instructionType.value = 'survey'
-      instructions.value = instruction
-      return // Exit early to prioritise survey message
-    }
-
-    // Check if the drone is in follow mode (not surveying, following is true, drone moving, vehicle parked)
-    if (!isDroneSurveying.value && isDroneFollowing.value && droneSpeed > 1 && vehicleSpeed < 0.5) {
-      instruction = '🤖 DRONE FOLLOWING: Drone is in follow mode and tracking ground vehicle. Vehicle is parked - drone maintaining position.'
-      instructionType.value = 'info'
-      instructions.value = instruction
-      return // Exit early for follow mode message
-    }
-
-
-    if (totalWaypoints > 0 && vehicleMissionWaypoints && Object.keys(vehicleMissionWaypoints).length > 0) {
-      let targetWaypointSeq = currentWaypoint
-      const visitedWaypoints = missionData.visited_waypoints || []
-
-      if (visitedWaypoints.includes(currentWaypoint)) {
-        const sortedWaypoints = Object.keys(vehicleMissionWaypoints).map(Number).sort((a, b) => a - b)
-        for (const seq of sortedWaypoints) {
-          if (!visitedWaypoints.includes(seq)) {
-            targetWaypointSeq = seq
-            break
-          }
-        }
-      }
-
-      const targetWaypoint = vehicleMissionWaypoints[targetWaypointSeq]
-
-      if (targetWaypoint && vehiclePos.latitude && vehiclePos.longitude) {
-        const wpDistance = calculateDistance(
-          vehiclePos.latitude, vehiclePos.longitude,
-          targetWaypoint.lat, targetWaypoint.lon
-        )
-        const bearing = calculateBearing(
-          vehiclePos.latitude, vehiclePos.longitude,
-          targetWaypoint.lat, targetWaypoint.lon
-        )
-        const waypointNumber = targetWaypointSeq + 1
-        console.log(waypointNumber)
-
-        if (wpDistance <= 5 && !isDroneSurveying.value && !surveyInitiated.value) {
-          instruction = `🎯 WAYPOINT REACHED: You've arrived at waypoint ${waypointNumber}/${totalWaypoints}. Survey operation available here.`
-          instructionType.value = 'success'
-          waypointReached.value = true
-        } else {
-          waypointReached.value = false
-          const targetDirection = bearingToDirection(bearing)
-          const compassDirection = bearingToCompass(bearing)
-
-          if (vehicleHeading !== null && vehicleHeading !== undefined) {
-            const relativeAngle = getRelativeDirection(vehicleHeading, bearing)
-            let turnInstruction = ''
-            if (Math.abs(relativeAngle) < 15) {
-              turnInstruction = '➡️ Continue straight'
-            } else if (relativeAngle > 0) {
-              turnInstruction = relativeAngle > 45 ? `🔄 Turn sharp right (${Math.round(relativeAngle)}°)` : `↗️ Turn right (${Math.round(relativeAngle)}°)`
-            } else {
-              turnInstruction = relativeAngle < -45 ? `🔄 Turn sharp left (${Math.abs(Math.round(relativeAngle))}°)` : `↖️ Turn left (${Math.abs(Math.round(relativeAngle))}°)`
-            }
-            const speedGuidance = vehicleSpeed > 5 ? ' - SLOW DOWN' : (vehicleSpeed < 0.5 ? ' - START MOVING' : '')
-            instruction = `${turnInstruction} to head ${compassDirection} for ${Math.round(wpDistance)}m to waypoint ${waypointNumber}/${totalWaypoints}${speedGuidance}.`
-          } else {
-            instruction = `🧭 Drive ${compassDirection} (${targetDirection.toLowerCase()}) for ${Math.round(wpDistance)}m to reach waypoint ${waypointNumber}/${totalWaypoints}.`
-          }
-          instructionType.value = 'action'
-        }
-      }
-    }
-    //
-    // if (droneContext === 'mission_active') {
-    //   if (isCoordinationActive.value) {
-    if (490 > distance.value > 400) {
-      instruction = '⚠️ MOVE TOWARDS DRONE: Drive closer to drone position for coordination. Check drone location on map.'
-      instructionType.value = 'warning'
-    } else if (distance.value > 500) {
-      instruction = '🚨 CRITICAL: MOVE CLOSER TO DRONE - Distance exceeds 500m safety limit. Drive towards drone position immediately!'
-      instructionType.value = 'error'
-      instructions.value = instruction
-      return
-
-    } else if (vehicleSpeed > 2 && !waypointReached.value && !isDroneFollowing.value) {
-      instruction = '🛑 SLOW DOWN: Approaching waypoint. Drone may start survey here. Reduce speed.'
-      instructionType.value = 'action'
-    }
-    // else if (waypointReached.value && !surveyInitiated.value) {
-    //   instruction = '✅ MAINTAIN POSITION: You are at the survey waypoint. Keep vehicle stationary while drone surveys.'
-    //   instructionType.value = 'success'
-    // }
-    //   }
-    // }
-
-    instructions.value = instruction
-  }
-  const armCarOnConnect = async () => {
-    console.log('WebSocket for car is open. Sending arm command...')
-    try {
-      const response = await fetch('http://localhost:8000/vehicles/car/arm', {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.detail || 'Failed to send arm command')
-      }
-
-      snackbarMessage.value = 'Car arm command sent successfully.'
-      snackbarColor.value = 'info'
-      showSnackbar.value = true
-
-    } catch (error) {
-      console.error('Error sending arm command to car on connect:', error)
-      snackbarMessage.value = `Arming Failed: ${error.message}`
-      snackbarColor.value = 'error'
-      showSnackbar.value = true
-    }
-  }
-
-  // Computed properties
-  const status = computed(() => {
-    if (distance.value > 500) return 'DANGER'
-    if (distance.value > 490) return 'WARNING'
-    return 'SAFE'
-  })
-  const statusColor = computed(() => {
-    switch (status.value) {
-      case 'DANGER':
-        return { dot: 'bg-error', text: 'text-error', bg: 'bg-error-subtle' }
-      case 'WARNING':
-        return { dot: 'bg-warning', text: 'text-warning', bg: 'bg-warning-subtle' }
-      default: // SAFE
-        return { dot: 'bg-success', text: 'text-success', bg: 'bg-success-subtle' }
-    }
-  })
-  const instructionCard = computed(() => {
-    if (status.value !== 'DANGER') {
-      return { color: '', variant: 'flat', border: false }
-    } else {
-      return { color: 'error-subtle', variant: 'flat', border: 'start' }
-    }
-  })
-  // Function to calculate distance between two GPS coordinates
-  const calculateDistance = (lat1, lon1, lat2, lon2) => {
-    const R = 6371000 // Earth's radius in meters
-    const toRad = value => (value * Math.PI) / 180
-
-    const dLat = toRad(lat2 - lat1)
-    const dLon = toRad(lon2 - lon1)
-    const lat1Rad = toRad(lat1)
-    const lat2Rad = toRad(lat2)
-
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1Rad) * Math.cos(lat2Rad)
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-    return R * c
-  }
-  // Watch for changes in drone or vehicle position to update distance and instructions
-
-  const resetMissionProgress = async vehicleType => {
-    try {
-      const response = await fetch(`http://localhost:8000/vehicles/${vehicleType}/mission/reset-progress`, {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-        },
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.detail || 'Failed to reset progress')
-      }
-
-      // Clear local progress
+    if (data.visited_waypoints) {
+      // Update the telemetry data with persisted progress
       if (vehicleType === 'car') {
-        vehicleData.mission.visited_waypoints = []
-        vehicleData.mission.current_wp_seq = 0
+        vehicleData.mission.visited_waypoints = data.visited_waypoints
+      } else {
+        droneData.mission.visited_waypoints = data.visited_waypoints
       }
 
-      snackbarMessage.value = `Mission progress reset for ${vehicleType}`
-      snackbarColor.value = 'info'
-      showSnackbar.value = true
-
-    } catch (error) {
-      console.error(`Error resetting progress for ${vehicleType}:`, error)
-      snackbarMessage.value = `Reset Failed: ${error.message}`
-      snackbarColor.value = 'error'
-      showSnackbar.value = true
+      console.log(`📂 Loaded ${data.visited_waypoints.length} visited waypoints for ${vehicleType}`)
     }
+  } catch (error) {
+    console.error(`Error fetching mission progress for ${vehicleType}:`, error)
+  }
+}
+
+// Instructions and mission steps
+const instructions = ref('Vehicle position is currently safe. Maintain current position during drone operation.')
+const missionSteps = ref([
+  {text: 'Drone take-off', status: 'completed'},
+  {text: 'Field scanning', status: 'current', progress: 45},
+  {text: 'Data collection at points A, B, C', status: 'pending'},
+  {text: 'Return to base', status: 'pending'},
+])
+
+// Helper functions for navigation instructions
+const calculateBearing = (lat1, lon1, lat2, lon2) => {
+  const dLon = (lon2 - lon1) * Math.PI / 180
+  const lat1Rad = lat1 * Math.PI / 180
+  const lat2Rad = lat2 * Math.PI / 180
+
+  const y = Math.sin(dLon) * Math.cos(lat2Rad)
+  const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon)
+
+  const bearing = Math.atan2(y, x) * 180 / Math.PI
+  return (bearing + 360) % 360
+}
+
+const bearingToCompass = bearing => {
+  const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']
+  const index = Math.round(bearing / 22.5) % 16
+  return directions[index]
+}
+
+const bearingToDirection = bearing => {
+  const directions = [
+    'North', 'North-Northeast', 'Northeast', 'East-Northeast',
+    'East', 'East-Southeast', 'Southeast', 'South-Southeast',
+    'South', 'South-Southwest', 'Southwest', 'West-Southwest',
+    'West', 'West-Northwest', 'Northwest', 'North-Northwest',
+  ]
+  const index = Math.round(bearing / 22.5) % 16
+  return directions[index]
+}
+
+const getRelativeDirection = (currentHeading, targetBearing) => {
+  let relativeAngle = targetBearing - currentHeading
+  if (relativeAngle > 180) relativeAngle -= 360
+  if (relativeAngle < -180) relativeAngle += 360
+  return relativeAngle
+}
+
+const getDroneOperationalContext = () => {
+  const droneStatus = droneData.heartbeat
+  if (!droneStatus) return 'unknown'
+
+  const {armed, custom_mode, system_status} = droneStatus
+  const groundSpeed = droneData.velocity.ground_speed || 0
+
+  if (!armed) return 'idle'
+  if (armed && custom_mode === 3 && groundSpeed > 1) return 'mission_active' // AUTO mode with movement
+  if (armed && custom_mode === 4) return 'guided' // GUIDED mode
+  if (armed && system_status === 3) return 'armed_ready'
+
+  return 'active'
+}
+
+// Enhanced function to update operator instructions based on car/vehicle telemetry
+const updateOperatorInstructions = () => {
+  if (!isVehicleConnected.value && !surveyInitiated.value) {
+    instructions.value = '⚠️ VEHICLE NOT CONNECTED: Please connect the ground vehicle to receive mission instructions.'
+    instructionType.value = 'warning'
+    return // Exit early, as no other instructions are relevant.
   }
 
-  watch(
-    [() => droneData.position, () => vehicleData.position, () => vehicleData.velocity, () => droneData.heartbeat, () => isCoordinationActive.value,
-     () => isDroneFollowing.value,
-     () => isDroneSurveying.value,
-     () => isVehicleConnected.value,
-    ],
-    ([dronePos, vehiclePos]) => {
-      if (
-        dronePos &&
-        dronePos.latitude !== null &&
-        dronePos.longitude !== null &&
-        vehiclePos &&
-        vehiclePos.latitude !== null &&
-        vehiclePos.longitude !== null
-      ) {
-        const newDistance = calculateDistance(
-          dronePos.latitude,
-          dronePos.longitude,
-          vehiclePos.latitude,
-          vehiclePos.longitude,
-        )
-        distance.value = Math.round(newDistance)
-        // Update instructions when position, velocity, or drone status changes
-        updateOperatorInstructions()
-        fetchCoordinationStatus()
-      }
-    },
-    { deep: true },
-  )
+  const droneContext = getDroneOperationalContext()
+  const vehicleHeading = vehicleData.velocity.heading
+  const vehicleSpeed = vehicleData.velocity.ground_speed || 0
+  const vehiclePos = vehicleData.position
+  const droneSpeed = droneData.velocity.ground_speed || 0
+
+  const missionData = vehicleData.mission
+  const currentWaypoint = missionData.current_wp_seq || 0
+  const totalWaypoints = missionData.total_waypoints || 0
+  const vehicleMissionWaypoints = missionWaypoints.car || {}
 
 
-  const checkConnectionStatus = () => {
-    const now = Date.now()
-    const CONNECTION_TIMEOUT = 5000 // 5 seconds
+  let instruction = 'Standby for mission instructions.'
+  instructionType.value = 'info' // Default type
 
-    // Check drone
-    const droneHeartbeat = droneData.heartbeat?.timestamp
-    if (droneHeartbeat) {
-      const lastHeartbeatMs = droneHeartbeat * 1000 // Convert seconds to ms
-      isDroneConnected.value = (now - lastHeartbeatMs) < CONNECTION_TIMEOUT
-    } else {
-      isDroneConnected.value = false
-    }
-
-    // Check vehicle
-    const vehicleHeartbeat = vehicleData.heartbeat?.timestamp
-    if (vehicleHeartbeat) {
-      const lastHeartbeatMs = vehicleHeartbeat * 1000
-      isVehicleConnected.value = (now - lastHeartbeatMs) < CONNECTION_TIMEOUT
-    } else {
-      isVehicleConnected.value = false
-    }
+  // Check if a survey was just initiated (highest priority)
+  if (surveyInitiated.value && !isDroneSurveying.value) {
+    instruction = '🚁 SURVEY INITIATED: Drone is preparing to start survey mission. Maintain current position and avoid sudden movements.'
+    instructionType.value = 'survey'
+    instructions.value = instruction
+    return // Exit early for survey initiation message
   }
-  // WebSocket connection function
-  const connectWebSocket = vehicleType => {
-    if (wsConnections[vehicleType] && wsConnections[vehicleType].readyState === WebSocket.OPEN) {
-      console.log(`WebSocket for ${vehicleType} already connected`)
-      return
-    }
 
-    try {
-      console.log(`Connecting to ${vehicleType} telemetry WebSocket...`)
-      wsConnections[vehicleType] = new WebSocket(`ws://127.0.0.1:8000/vehicles/${vehicleType}/ws`)
+  // Check if the drone is surveying - this takes priority over other instructions
+  if (isDroneSurveying.value && vehicleSpeed < 0.5 && !isDroneFollowing.value) {
+    instruction = '🚁 SURVEY IN PROGRESS: Drone is actively surveying. Maintain current position and avoid sudden movements.'
+    instructionType.value = 'survey'
+    instructions.value = instruction
+    return // Exit early to prioritise survey message
+  }
 
-      wsConnections[vehicleType].onopen = () => {
-        console.log(`WebSocket connection for ${vehicleType} established`)
-        wsReconnectAttempts.value = 0
+  // Check if the drone is in follow mode (not surveying, following is true, drone moving, vehicle parked)
+  if (!isDroneSurveying.value && isDroneFollowing.value && droneSpeed > 1 && vehicleSpeed < 0.5) {
+    instruction = '🤖 DRONE FOLLOWING: Drone is in follow mode and tracking ground vehicle. Vehicle is parked - drone maintaining position.'
+    instructionType.value = 'info'
+    instructions.value = instruction
+    return // Exit early for follow mode message
+  }
 
-        snackbarMessage.value = `Connected to ${vehicleType} telemetry`
-        snackbarColor.value = 'success'
-        showSnackbar.value = true
+  // Check if no mission is loaded
+  if (totalWaypoints === 0 || !vehicleMissionWaypoints || Object.keys(vehicleMissionWaypoints).length === 0) {
+    instruction = '📋 NO MISSION LOADED: No mission waypoints are currently planned for this vehicle. Please load a mission to begin operations.'
+    instructionType.value = 'warning'
+    instructions.value = instruction
+    return // Exit early for no mission message
+  }
 
-      }
+  if (totalWaypoints > 0 && vehicleMissionWaypoints && Object.keys(vehicleMissionWaypoints).length > 0) {
+    let targetWaypointSeq = currentWaypoint
+    const visitedWaypoints = missionData.visited_waypoints || []
 
-      wsConnections[vehicleType].onmessage = event => {
-        try {
-          const data = JSON.parse(event.data)
-
-          // Ignore ping messages
-          if (data.type === 'ping') return
-
-          // Handle new coordination events
-          if (data.type === 'coordination_event') {
-            console.log(`Received coordination event:`, data.event)
-            switch (data.event) {
-              case 'coordination_active':
-                isCoordinationActive.value = true
-                snackbarMessage.value = 'Coordination Mode Activated.'
-                snackbarColor.value = 'info'
-                showSnackbar.value = true
-                break
-              case 'following_triggered':
-                isDroneFollowing.value = true
-                snackbarMessage.value = 'SAFETY: Drone is now following the car!'
-                snackbarColor.value = 'warning'
-                showSnackbar.value = true
-                break
-              case 'following_stopped':
-                isDroneFollowing.value = false
-                break
-              case 'coordination_stopped':
-                isCoordinationActive.value = false
-                isDroneFollowing.value = false
-                snackbarMessage.value = 'Coordination Mode Deactivated.'
-                snackbarColor.value = 'info'
-                showSnackbar.value = true
-                break
-              case 'coordination_fault':
-                snackbarMessage.value = `Coordination Fault: ${data.reason}`
-                snackbarColor.value = 'error'
-                showSnackbar.value = true
-                // Do not change isCoordinationActive or isDroneFollowing, as the service is still running
-                break
-              case 'survey_button_state_changed':
-                surveyButtonEnabled.value = data.enabled
-                console.log(`Survey button ${data.enabled ? 'enabled' : 'disabled'} at distance ${data.distance}m`)
-                break
-              case 'survey_abandoned':
-                snackbarMessage.value = `Survey abandoned: ${data.reason}`
-                snackbarColor.value = 'warning'
-                showSnackbar.value = true
-                break
-              case 'survey_completed':
-                surveyState.isComplete = true
-                surveyState.completedWaypoints = currentMissionWaypoints.value
-
-                snackbarMessage.value = 'Survey mission completed successfully! 🎉'
-                snackbarColor.value = 'success'
-                showSnackbar.value = true
-
-                // Clear mission waypoints after survey completion with a small delay
-                setTimeout(() => {
-                  console.log('Clearing mission waypoints after survey completion')
-                  droneData.mission.mission_waypoints = {}
-                  droneData.mission.total_waypoints = 0
-                  droneData.mission.current_wp_seq = 0
-                  droneData.mission.next_wp_seq = 0
-                  surveyState.isComplete = false // Reset for next survey
-                }, 3000) // 3 second delay to allow map to save the completed area
-                break
-            }
-            return; // Stop processing since this wasn't a telemetry message
-          }
-
-          console.log(`Received ${vehicleType} telemetry data:`, data)
-
-          // Update a telemetry data object based on a vehicle type
-          if (vehicleType === 'drone') {
-            if (data.position) {
-              Object.assign(droneData.position, data.position)
-            }
-            if (data.velocity) {
-              Object.assign(droneData.velocity, data.velocity)
-            }
-            if (data.battery) {
-              Object.assign(droneData.battery, data.battery)
-            }
-            if (data.mission) {
-              Object.assign(droneData.mission, data.mission)
-            }
-            if (data.heartbeat) {
-              // To prevent flickering, we only update the timestamp if the new one is valid.
-              // Otherwise, we keep the last known good timestamp.
-              const newHeartbeatData = { ...data.heartbeat };
-              if (newHeartbeatData.timestamp === null && droneData.heartbeat.timestamp !== null) {
-                // If the incoming packet has no heartbeat, reuse the last one we saw.
-                newHeartbeatData.timestamp = droneData.heartbeat.timestamp;
-              }
-              Object.assign(droneData.heartbeat, newHeartbeatData)
-            }
-            if (data.vehicle_id) droneData.vehicle_id = data.vehicle_id
-          } else if (vehicleType === 'car') {
-            // Handle vehicle telemetry data
-            if (data.position) {
-              Object.assign(vehicleData.position, data.position)
-            }
-            if (data.velocity) {
-              Object.assign(vehicleData.velocity, data.velocity)
-            }
-            if (data.battery) {
-              Object.assign(vehicleData.battery, data.battery)
-            }
-            if (data.mission) {
-              Object.assign(vehicleData.mission, data.mission)
-            }
-            if (data.heartbeat) {
-              const newHeartbeatData = { ...data.heartbeat };
-              if (newHeartbeatData.timestamp === null && vehicleData.heartbeat.timestamp !== null) {
-                // If the incoming packet has no heartbeat, reuse the last one we saw.
-                newHeartbeatData.timestamp = vehicleData.heartbeat.timestamp;
-              }
-              Object.assign(vehicleData.heartbeat, newHeartbeatData)
-            }
-            if (data.vehicle_id) vehicleData.vehicle_id = data.vehicle_id
-          }
-
-        } catch (error) {
-          console.error(`Error processing ${vehicleType} telemetry message:`, error)
+    if (visitedWaypoints.includes(currentWaypoint)) {
+      const sortedWaypoints = Object.keys(vehicleMissionWaypoints).map(Number).sort((a, b) => a - b)
+      for (const seq of sortedWaypoints) {
+        if (!visitedWaypoints.includes(seq)) {
+          targetWaypointSeq = seq
+          break
         }
       }
+    }
 
-      wsConnections[vehicleType].onclose = event => {
-        console.log(`WebSocket connection for ${vehicleType} closed: ${event.code} ${event.reason}`)
+    const targetWaypoint = vehicleMissionWaypoints[targetWaypointSeq]
 
-        if (event.code !== 1000 && wsReconnectAttempts.value < maxReconnectAttempts) {
-          const delay = Math.min(1000 * Math.pow(2, wsReconnectAttempts.value), 10000)
-          wsReconnectAttempts.value++
+    if (targetWaypoint && vehiclePos.latitude && vehiclePos.longitude) {
+      const wpDistance = calculateDistance(
+        vehiclePos.latitude, vehiclePos.longitude,
+        targetWaypoint.lat, targetWaypoint.lon
+      )
+      const bearing = calculateBearing(
+        vehiclePos.latitude, vehiclePos.longitude,
+        targetWaypoint.lat, targetWaypoint.lon
+      )
+      const waypointNumber = targetWaypointSeq + 1
+      console.log(waypointNumber)
 
-          console.log(`Attempting to reconnect ${vehicleType} in ${delay}ms`)
-          setTimeout(() => connectWebSocket(vehicleType), delay)
+      if (wpDistance <= 5 && !isDroneSurveying.value && !surveyInitiated.value) {
+        instruction = `🎯 WAYPOINT REACHED: You've arrived at waypoint ${waypointNumber}/${totalWaypoints}. Survey operation available here.`
+        instructionType.value = 'success'
+        waypointReached.value = true
+      } else {
+        waypointReached.value = false
+        const targetDirection = bearingToDirection(bearing)
+        const compassDirection = bearingToCompass(bearing)
+
+        if (vehicleHeading !== null && vehicleHeading !== undefined) {
+          const relativeAngle = getRelativeDirection(vehicleHeading, bearing)
+          let turnInstruction = ''
+          if (Math.abs(relativeAngle) < 15) {
+            turnInstruction = '➡️ Continue straight'
+          } else if (relativeAngle > 0) {
+            turnInstruction = relativeAngle > 45 ? `🔄 Turn sharp right (${Math.round(relativeAngle)}°)` : `↗️ Turn right (${Math.round(relativeAngle)}°)`
+          } else {
+            turnInstruction = relativeAngle < -45 ? `🔄 Turn sharp left (${Math.abs(Math.round(relativeAngle))}°)` : `↖️ Turn left (${Math.abs(Math.round(relativeAngle))}°)`
+          }
+          const speedGuidance = vehicleSpeed > 5 ? ' - SLOW DOWN' : (vehicleSpeed < 0.5 ? ' - START MOVING' : '')
+          instruction = `${turnInstruction} to head ${compassDirection} for ${Math.round(wpDistance)}m to waypoint ${waypointNumber}/${totalWaypoints}${speedGuidance}.`
+        } else {
+          instruction = `🧭 Drive ${compassDirection} (${targetDirection.toLowerCase()}) for ${Math.round(wpDistance)}m to reach waypoint ${waypointNumber}/${totalWaypoints}.`
         }
+        instructionType.value = 'action'
       }
-
-      wsConnections[vehicleType].onerror = error => {
-        console.error(`WebSocket error for ${vehicleType}:`, error)
-      }
-
-    } catch (error) {
-      console.error(`Error establishing WebSocket connection for ${vehicleType}:`, error)
-      snackbarMessage.value = `Connection error for ${vehicleType}: ${error.message}`
-      snackbarColor.value = 'error'
-      showSnackbar.value = true
     }
   }
-  const disconnectWebSocket = vehicleType => {
+  //
+  // if (droneContext === 'mission_active') {
+  //   if (isCoordinationActive.value) {
+  if (DISTANCE_CONSTANTS.MAX_SAFE_DISTANCE > distance.value > DISTANCE_CONSTANTS.WARNING_THRESHOLD) {
+    instruction = '⚠️ MOVE TOWARDS DRONE: Drive closer to drone position for coordination. Check drone location on map.'
+    instructionType.value = 'warning'
+  } else if (distance.value > DISTANCE_CONSTANTS.CRITICAL_THRESHOLD) {
+    instruction = '🚨 CRITICAL: MOVE CLOSER TO DRONE - Distance exceeds 500m safety limit. Drive towards drone position immediately!'
+    instructionType.value = 'error'
+    instructions.value = instruction
+    return
+
+  } else if (vehicleSpeed > 2 && !waypointReached.value && !isDroneFollowing.value) {
+    instruction = '🛑 SLOW DOWN: Approaching waypoint. Drone may start survey here. Reduce speed.'
+    instructionType.value = 'action'
+  }
+  // else if (waypointReached.value && !surveyInitiated.value) {
+  //   instruction = '✅ MAINTAIN POSITION: You are at the survey waypoint. Keep vehicle stationary while drone surveys.'
+  //   instructionType.value = 'success'
+  // }
+  //   }
+  // }
+
+  instructions.value = instruction
+}
+const armCarOnConnect = async () => {
+  console.log('WebSocket for car is open. Sending arm command...')
+  try {
+    const response = await fetch(`${API_CONSTANTS.BASE_URL}/vehicles/car/arm`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to send arm command')
+    }
+
+    snackbarMessage.value = 'Car arm command sent successfully.'
+    snackbarColor.value = 'info'
+    showSnackbar.value = true
+
+  } catch (error) {
+    console.error('Error sending arm command to car on connect:', error)
+    snackbarMessage.value = `Arming Failed: ${error.message}`
+    snackbarColor.value = 'error'
+    showSnackbar.value = true
+  }
+}
+
+// Computed properties
+const status = computed(() => {
+  if (distance.value > DISTANCE_CONSTANTS.CRITICAL_THRESHOLD) return 'DANGER'
+  if (distance.value > DISTANCE_CONSTANTS.MAX_SAFE_DISTANCE) return 'WARNING'
+  return 'SAFE'
+})
+const statusColor = computed(() => {
+  switch (status.value) {
+    case 'DANGER':
+      return {dot: 'bg-error', text: 'text-error', bg: 'bg-error-subtle'}
+    case 'WARNING':
+      return {dot: 'bg-warning', text: 'text-warning', bg: 'bg-warning-subtle'}
+    default: // SAFE
+      return {dot: 'bg-success', text: 'text-success', bg: 'bg-success-subtle'}
+  }
+})
+const instructionCard = computed(() => {
+  if (status.value !== 'DANGER') {
+    return {color: '', variant: 'flat', border: false}
+  } else {
+    return {color: 'error-subtle', variant: 'flat', border: 'start'}
+  }
+})
+// Function to calculate distance between two GPS coordinates
+const calculateDistance = (lat1, lon1, lat2, lon2) => {
+  const R = PHYSICAL_CONSTANTS.EARTH_RADIUS_METERS
+  const toRad = value => (value * Math.PI) / 180
+
+  const dLat = toRad(lat2 - lat1)
+  const dLon = toRad(lon2 - lon1)
+  const lat1Rad = toRad(lat1)
+  const lat2Rad = toRad(lat2)
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1Rad) * Math.cos(lat2Rad)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return R * c
+}
+// Watch for changes in drone or vehicle position to update distance and instructions
+
+const resetMissionProgress = async vehicleType => {
+  try {
+    const response = await fetch(`${API_CONSTANTS.BASE_URL}/vehicles/${vehicleType}/mission/reset-progress`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+      },
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to reset progress')
+    }
+
+    // Clear local progress
+    if (vehicleType === 'car') {
+      vehicleData.mission.visited_waypoints = []
+      vehicleData.mission.current_wp_seq = 0
+    }
+
+    snackbarMessage.value = `Mission progress reset for ${vehicleType}`
+    snackbarColor.value = 'info'
+    showSnackbar.value = true
+
+  } catch (error) {
+    console.error(`Error resetting progress for ${vehicleType}:`, error)
+    snackbarMessage.value = `Reset Failed: ${error.message}`
+    snackbarColor.value = 'error'
+    showSnackbar.value = true
+  }
+}
+
+watch(
+  [() => droneData.position, () => vehicleData.position, () => vehicleData.velocity, () => droneData.heartbeat, () => isCoordinationActive.value,
+    () => isDroneFollowing.value,
+    () => isDroneSurveying.value,
+    () => isVehicleConnected.value,
+  ],
+  ([dronePos, vehiclePos]) => {
     if (
-      wsConnections[vehicleType] &&
-      [WebSocket.OPEN, WebSocket.CONNECTING].includes(wsConnections[vehicleType].readyState)
+      dronePos &&
+      dronePos.latitude !== null &&
+      dronePos.longitude !== null &&
+      vehiclePos &&
+      vehiclePos.latitude !== null &&
+      vehiclePos.longitude !== null
     ) {
-      console.log(`Closing WebSocket connection for ${vehicleType}`)
-      wsConnections[vehicleType].close(1000, `Disconnecting ${vehicleType} by user action`)
+      const newDistance = calculateDistance(
+        dronePos.latitude,
+        dronePos.longitude,
+        vehiclePos.latitude,
+        vehiclePos.longitude,
+      )
+      distance.value = Math.round(newDistance)
+      // Update instructions when position, velocity, or drone status changes
+      updateOperatorInstructions()
+      fetchCoordinationStatus()
     }
+  },
+  {deep: true},
+)
+
+
+const checkConnectionStatus = () => {
+  const now = Date.now()
+  const CONNECTION_TIMEOUT = CONNECTION_CONSTANTS.TIMEOUT
+
+  // Check drone
+  const droneHeartbeat = droneData.heartbeat?.timestamp
+  if (droneHeartbeat) {
+    const lastHeartbeatMs = droneHeartbeat * CONNECTION_CONSTANTS.HEARTBEAT_TO_MS
+    isDroneConnected.value = (now - lastHeartbeatMs) < CONNECTION_TIMEOUT
+  } else {
+    isDroneConnected.value = false
   }
-  const connectVehicle = async vehicleType => {
-    try {
-      const response = await fetch(`http://localhost:8000/vehicles/${vehicleType}/connect`, {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          site_name: vehicleLocation.value.replace(' ', '-').toLowerCase(),
-        }),
-      })
 
-      const data = await response.json()
+  // Check vehicle
+  const vehicleHeartbeat = vehicleData.heartbeat?.timestamp
+  if (vehicleHeartbeat) {
+    const lastHeartbeatMs = vehicleHeartbeat * CONNECTION_CONSTANTS.HEARTBEAT_TO_MS
+    isVehicleConnected.value = (now - lastHeartbeatMs) < CONNECTION_TIMEOUT
+  } else {
+    isVehicleConnected.value = false
+  }
+}
+// WebSocket connection function
+const connectWebSocket = vehicleType => {
+  if (wsConnections[vehicleType] && wsConnections[vehicleType].readyState === WebSocket.OPEN) {
+    console.log(`WebSocket for ${vehicleType} already connected`)
+    return
+  }
 
-      if (!response.ok) {
-        throw new Error(data.detail || 'Failed to connect vehicle')
-      }
+  try {
+    console.log(`Connecting to ${vehicleType} telemetry WebSocket...`)
+    wsConnections[vehicleType] = new WebSocket(`${API_CONSTANTS.WEBSOCKET_URL}/vehicles/${vehicleType}/ws`)
 
-      // Fetch mission waypoints and progress after successful connection
-      await fetchMissionWaypoints(vehicleType)
-      await fetchMissionProgress(vehicleType)
+    wsConnections[vehicleType].onopen = () => {
+      console.log(`WebSocket connection for ${vehicleType} established`)
+      wsReconnectAttempts.value = 0
 
-      snackbarMessage.value = `Connected to ${vehicleType}`
+      snackbarMessage.value = `Connected to ${vehicleType} telemetry`
       snackbarColor.value = 'success'
       showSnackbar.value = true
 
-    } catch (error) {
-      console.error(`Error connecting to ${vehicleType}:`, error)
-      snackbarMessage.value = `Connection Failed: ${error.message}`
-      snackbarColor.value = 'error'
-      showSnackbar.value = true
     }
+
+    wsConnections[vehicleType].onmessage = event => {
+      try {
+        const data = JSON.parse(event.data)
+
+        // Ignore ping messages
+        if (data.type === 'ping') return
+
+        // Handle new coordination events
+        if (data.type === 'coordination_event') {
+          console.log(`Received coordination event:`, data.event)
+          switch (data.event) {
+            case 'coordination_active':
+              isCoordinationActive.value = true
+              snackbarMessage.value = 'Coordination Mode Activated.'
+              snackbarColor.value = 'info'
+              showSnackbar.value = true
+              break
+            case 'following_triggered':
+              isDroneFollowing.value = true
+              snackbarMessage.value = 'SAFETY: Drone is now following the car!'
+              snackbarColor.value = 'warning'
+              showSnackbar.value = true
+              break
+            case 'following_stopped':
+              isDroneFollowing.value = false
+              break
+            case 'coordination_stopped':
+              isCoordinationActive.value = false
+              isDroneFollowing.value = false
+              snackbarMessage.value = 'Coordination Mode Deactivated.'
+              snackbarColor.value = 'info'
+              showSnackbar.value = true
+              break
+            case 'coordination_fault':
+              snackbarMessage.value = `Coordination Fault: ${data.reason}`
+              snackbarColor.value = 'error'
+              showSnackbar.value = true
+              // Do not change isCoordinationActive or isDroneFollowing, as the service is still running
+              break
+            case 'survey_button_state_changed':
+              surveyButtonEnabled.value = data.enabled
+              console.log(`Survey button ${data.enabled ? 'enabled' : 'disabled'} at distance ${data.distance}m`)
+              break
+            case 'survey_abandoned':
+              snackbarMessage.value = `Survey abandoned: ${data.reason}`
+              snackbarColor.value = 'warning'
+              showSnackbar.value = true
+              break
+            case 'survey_completed':
+              surveyState.isComplete = true
+              surveyState.completedWaypoints = currentMissionWaypoints.value
+
+              snackbarMessage.value = 'Survey mission completed successfully! 🎉'
+              snackbarColor.value = 'success'
+              showSnackbar.value = true
+
+              // Clear mission waypoints after survey completion with a small delay
+              setTimeout(() => {
+                console.log('Clearing mission waypoints after survey completion')
+                droneData.mission.mission_waypoints = {}
+                droneData.mission.total_waypoints = 0
+                droneData.mission.current_wp_seq = 0
+                droneData.mission.next_wp_seq = 0
+                surveyState.isComplete = false // Reset for next survey
+              }, TIMING_CONSTANTS.SURVEY_COMPLETION_DELAY)
+              break
+          }
+          return; // Stop processing since this wasn't a telemetry message
+        }
+
+        console.log(`Received ${vehicleType} telemetry data:`, data)
+
+        // Update a telemetry data object based on a vehicle type
+        if (vehicleType === 'drone') {
+          if (data.position) {
+            Object.assign(droneData.position, data.position)
+          }
+          if (data.velocity) {
+            Object.assign(droneData.velocity, data.velocity)
+          }
+          if (data.battery) {
+            Object.assign(droneData.battery, data.battery)
+          }
+          if (data.mission) {
+            Object.assign(droneData.mission, data.mission)
+          }
+          if (data.heartbeat) {
+            // To prevent flickering, we only update the timestamp if the new one is valid.
+            // Otherwise, we keep the last known good timestamp.
+            const newHeartbeatData = {...data.heartbeat};
+            if (newHeartbeatData.timestamp === null && droneData.heartbeat.timestamp !== null) {
+              // If the incoming packet has no heartbeat, reuse the last one we saw.
+              newHeartbeatData.timestamp = droneData.heartbeat.timestamp;
+            }
+            Object.assign(droneData.heartbeat, newHeartbeatData)
+          }
+          if (data.vehicle_id) droneData.vehicle_id = data.vehicle_id
+        } else if (vehicleType === 'car') {
+          // Handle vehicle telemetry data
+          if (data.position) {
+            Object.assign(vehicleData.position, data.position)
+          }
+          if (data.velocity) {
+            Object.assign(vehicleData.velocity, data.velocity)
+          }
+          if (data.battery) {
+            Object.assign(vehicleData.battery, data.battery)
+          }
+          if (data.mission) {
+            Object.assign(vehicleData.mission, data.mission)
+          }
+          if (data.heartbeat) {
+            const newHeartbeatData = {...data.heartbeat};
+            if (newHeartbeatData.timestamp === null && vehicleData.heartbeat.timestamp !== null) {
+              // If the incoming packet has no heartbeat, reuse the last one we saw.
+              newHeartbeatData.timestamp = vehicleData.heartbeat.timestamp;
+            }
+            Object.assign(vehicleData.heartbeat, newHeartbeatData)
+          }
+          if (data.vehicle_id) vehicleData.vehicle_id = data.vehicle_id
+        }
+
+      } catch (error) {
+        console.error(`Error processing ${vehicleType} telemetry message:`, error)
+      }
+    }
+
+    wsConnections[vehicleType].onclose = event => {
+      console.log(`WebSocket connection for ${vehicleType} closed: ${event.code} ${event.reason}`)
+
+      if (event.code !== WEBSOCKET_CONSTANTS.NORMAL_CLOSURE && wsReconnectAttempts.value < maxReconnectAttempts) {
+        const delay = Math.min(CONNECTION_CONSTANTS.WS_RECONNECT_BASE_DELAY * Math.pow(2, wsReconnectAttempts.value), CONNECTION_CONSTANTS.WS_RECONNECT_MAX_DELAY)
+        wsReconnectAttempts.value++
+
+        console.log(`Attempting to reconnect ${vehicleType} in ${delay}ms`)
+        setTimeout(() => connectWebSocket(vehicleType), delay)
+      }
+    }
+
+    wsConnections[vehicleType].onerror = error => {
+      console.error(`WebSocket error for ${vehicleType}:`, error)
+    }
+
+  } catch (error) {
+    console.error(`Error establishing WebSocket connection for ${vehicleType}:`, error)
+    snackbarMessage.value = `Connection error for ${vehicleType}: ${error.message}`
+    snackbarColor.value = 'error'
+    showSnackbar.value = true
+  }
+}
+const disconnectWebSocket = vehicleType => {
+  if (
+    wsConnections[vehicleType] &&
+    [WebSocket.OPEN, WebSocket.CONNECTING].includes(wsConnections[vehicleType].readyState)
+  ) {
+    console.log(`Closing WebSocket connection for ${vehicleType}`)
+    wsConnections[vehicleType].close(WEBSOCKET_CONSTANTS.NORMAL_CLOSURE, `Disconnecting ${vehicleType} by user action`)
+  }
+}
+const connectVehicle = async vehicleType => {
+  try {
+    const response = await fetch(`${API_CONSTANTS.BASE_URL}/vehicles/${vehicleType}/connect`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        site_name: vehicleLocation.value.replace(' ', '-').toLowerCase(),
+      }),
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to connect vehicle')
+    }
+
+    // Fetch mission waypoints and progress after successful connection
+    await fetchMissionWaypoints(vehicleType)
+    await fetchMissionProgress(vehicleType)
+
+    snackbarMessage.value = `Connected to ${vehicleType}`
+    snackbarColor.value = 'success'
+    showSnackbar.value = true
+
+    if (vehicleType === 'car') {
+      // Add a small delay to ensure connection is fully established
+      setTimeout(async () => {
+        await armCarOnConnect()
+      }, CONNECTION_CONSTANTS.DISCONNECT_DELAY)
+    }
+
+
+  } catch (error) {
+    console.error(`Error connecting to ${vehicleType}:`, error)
+    snackbarMessage.value = `Connection Failed: ${error.message}`
+    snackbarColor.value = 'error'
+    showSnackbar.value = true
+  }
+}
+
+const disconnectVehicle = async vehicleType => {
+  console.log(`Disconnecting ${vehicleType}...`)
+  try {
+    const response = await fetch(`${API_CONSTANTS.BASE_URL}/vehicles/${vehicleType}/disconnect`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.detail || `Failed to disconnect ${vehicleType}`)
+    }
+
+    snackbarMessage.value = `${vehicleType.charAt(0).toUpperCase() + vehicleType.slice(1)} disconnected successfully`
+    snackbarColor.value = 'info'
+    showSnackbar.value = true
+
+    disconnectWebSocket(vehicleType)
+
+  } catch (error) {
+    console.error(`Error disconnecting ${vehicleType}:`, error)
+    snackbarMessage.value = `Error disconnecting ${vehicleType}: ${error.message}`
+    snackbarColor.value = 'error'
+    showSnackbar.value = true
+    // Still attempt to close the websocket on error
+    disconnectWebSocket(vehicleType)
+  }
+}
+const initiateSurvey = async () => {
+  if (!surveyButtonEnabled.value) {
+    console.log('Survey button not enabled')
+    return
   }
 
-  const disconnectVehicle = async vehicleType => {
-    console.log(`Disconnecting ${vehicleType}...`)
-    try {
-      const response = await fetch(`http://localhost:8000/vehicles/${vehicleType}/disconnect`, {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-      })
+  try {
+    // Immediately set survey initiation state for UI feedback
+    surveyInitiated.value = true
 
-      const data = await response.json()
+    const response = await fetch(`${API_CONSTANTS.BASE_URL}/coordination/initiate-proximity-survey`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+    })
 
-      if (!response.ok) {
-        throw new Error(data.detail || `Failed to disconnect ${vehicleType}`)
-      }
+    const data = await response.json()
 
-      snackbarMessage.value = `${vehicleType.charAt(0).toUpperCase() + vehicleType.slice(1)} disconnected successfully`
-      snackbarColor.value = 'info'
-      showSnackbar.value = true
-
-      disconnectWebSocket(vehicleType)
-
-    } catch (error) {
-      console.error(`Error disconnecting ${vehicleType}:`, error)
-      snackbarMessage.value = `Error disconnecting ${vehicleType}: ${error.message}`
-      snackbarColor.value = 'error'
-      showSnackbar.value = true
-      // Still attempt to close the websocket on error
-      disconnectWebSocket(vehicleType)
+    if (!response.ok) {
+      throw new Error(data.message || 'Failed to initiate survey')
     }
+
+    console.log('Survey initiated successfully:', data.message)
+
+    // The backend will send WebSocket events to update the actual survey state
+
+
+    snackbarMessage.value = 'Survey mission initiated successfully!'
+    snackbarColor.value = 'success'
+    showSnackbar.value = true
+
+  } catch (error) {
+    console.error('Failed to initiate survey:', error)
+
+    // Reset survey state on error
+    surveyInitiated.value = false
+
+    snackbarMessage.value = `Survey initiation failed: ${error.message}`
+    snackbarColor.value = 'error'
+    showSnackbar.value = true
   }
-  const initiateSurvey = async () => {
-    if (!surveyButtonEnabled.value) {
-      console.log('Survey button not enabled')
-      return
-    }
+}
+// fetch coordination status
+const fetchCoordinationStatus = async () => {
+  try {
+    const response = await fetch(`${API_CONSTANTS.BASE_URL}/coordination/status`)
+    const data = await response.json()
 
-    try {
-      // Immediately set survey initiation state for UI feedback
-      surveyInitiated.value = true
+    console.log('Coordination status on load:', data)
 
-      const response = await fetch('http://localhost:8000/coordination/initiate-proximity-survey', {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-      })
+    // Update state based on backend status
+    isCoordinationActive.value = data.active
+    isDroneFollowing.value = data.following
+    surveyInProgress.value = data.surveying
+    surveyButtonEnabled.value = data.survey_button_enabled
 
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Failed to initiate survey')
-      }
-
-      console.log('Survey initiated successfully:', data.message)
-
-      // The backend will send WebSocket events to update the actual survey state
-
-
-      snackbarMessage.value = 'Survey mission initiated successfully!'
-      snackbarColor.value = 'success'
-      showSnackbar.value = true
-
-    } catch (error) {
-      console.error('Failed to initiate survey:', error)
-
-      // Reset survey state on error
+    // If survey is in progress, clear the initiation flag
+    if (data.surveying) {
       surveyInitiated.value = false
-
-      snackbarMessage.value = `Survey initiation failed: ${error.message}`
-      snackbarColor.value = 'error'
-      showSnackbar.value = true
     }
+
+    // console.log('Frontend state updated:', {
+    //   isCoordinationActive: isCoordinationActive.value,
+    //   isDroneFollowing: isDroneFollowing.value,
+    //   surveyInProgress: surveyInProgress.value,
+    //   surveyButtonEnabled: surveyButtonEnabled.value,
+    // })
+
+  } catch (error) {
+    console.error('Failed to fetch coordination status:', error)
   }
-  // fetch coordination status
-  const fetchCoordinationStatus = async () => {
-    try {
-      const response = await fetch('http://localhost:8000/coordination/status')
-      const data = await response.json()
-
-      console.log('Coordination status on load:', data)
-
-      // Update state based on backend status
-      isCoordinationActive.value = data.active
-      isDroneFollowing.value = data.following
-      surveyInProgress.value = data.surveying
-      surveyButtonEnabled.value = data.survey_button_enabled
-
-      // If survey is in progress, clear the initiation flag
-      if (data.surveying) {
-        surveyInitiated.value = false
-      }
-
-      console.log('Frontend state updated:', {
-        isCoordinationActive: isCoordinationActive.value,
-        isDroneFollowing: isDroneFollowing.value,
-        surveyInProgress: surveyInProgress.value,
-        surveyButtonEnabled: surveyButtonEnabled.value,
-      })
-
-    } catch (error) {
-      console.error('Failed to fetch coordination status:', error)
-    }
+}
+watch(() => vehicleData.mission.total_waypoints, newTotal => {
+  if (newTotal > 0) {
+    fetchMissionWaypoints('car')
   }
-  watch(() => vehicleData.mission.total_waypoints, newTotal => {
-    if (newTotal > 0) {
-      fetchMissionWaypoints('car')
-    }
-  })
+})
 
-  watch(() => droneData.mission.total_waypoints, newTotal => {
-    if (newTotal > 0) {
-      fetchMissionWaypoints('drone')
-    }
-  })
+watch(() => droneData.mission.total_waypoints, newTotal => {
+  if (newTotal > 0) {
+    fetchMissionWaypoints('drone')
+  }
+})
 
-  // Update your onMounted function
-  onMounted(async () => {
-    console.log('App mounted, setting up connections...')
+// Update your onMounted function
+onMounted(async () => {
+  console.log('App mounted, setting up connections...')
 
-    // Fetch coordination status first
-    await fetchCoordinationStatus()
+  // Fetch coordination status first
+  await fetchCoordinationStatus()
 
-    // Then setup WebSocket connections
-    connectWebSocket('drone')
-    connectWebSocket('car')
+  // Then setup WebSocket connections
+  connectWebSocket('drone')
+  connectWebSocket('car')
 
-    // Setup connection check interval
-    connectionCheckInterval = setInterval(checkConnectionStatus, 5000)
+  // Setup connection check interval
+  connectionCheckInterval = setInterval(checkConnectionStatus, CONNECTION_CONSTANTS.CHECK_INTERVAL)
 
-    // Initial instruction update
-    updateOperatorInstructions()
-  })
+  // Initial instruction update
+  updateOperatorInstructions()
+})
 
 
-  onBeforeUnmount(() => {
-    if (connectionCheckInterval) {
-      clearInterval(connectionCheckInterval)
-    }
-    disconnectWebSocket('drone')
-    disconnectWebSocket('car')
-  })
+onBeforeUnmount(() => {
+  if (connectionCheckInterval) {
+    clearInterval(connectionCheckInterval)
+  }
+  disconnectWebSocket('drone')
+  disconnectWebSocket('car')
+})
 
 </script>
 

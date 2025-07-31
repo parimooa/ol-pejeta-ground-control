@@ -17,7 +17,7 @@
             :class="statusIndicator.animation"
           >
           </v-avatar>
-          <span class="text-subtitle-1 font-weight-bold text-grey-darken-3">Distance</span>
+          <span class="text-title font-weight-bold text-grey-darken-3">Distance Monitoring</span>
         </div>
         <v-chip
           :color="statusChip.color"
@@ -51,7 +51,7 @@
           >
           </v-progress-linear>
 
-          <div class="d-flex justify-space-between text-caption text-grey-darken-1">
+          <div class="d-flex justify-space-between text-subtitle-2 text-grey-darken-1">
             <span>Safe</span>
             <span class="font-weight-medium">{{ maxSafeDistance }}m</span>
             <span>Critical</span>
@@ -59,8 +59,8 @@
         </div>
 
         <!-- Compact status message -->
-        <div class="status-message text-caption text-grey-darken-2">
-          <v-icon :icon="statusAlert.icon" :color="statusAlert.color" size="small" class="me-1"></v-icon>
+        <div class="status-message text-subtitle-2 text-grey-darken-2">
+          <v-icon :icon="statusAlert.icon" :color="statusAlert.color" size="large" class="me-1"></v-icon>
           {{ compactStatusMessage }}
         </div>
       </div>

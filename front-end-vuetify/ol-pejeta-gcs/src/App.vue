@@ -507,7 +507,7 @@ const updateOperatorInstructions = () => {
 const armCarOnConnect = async () => {
   console.log('WebSocket for car is open. Sending arm command...')
   try {
-    const response = await fetch('${API_CONSTANTS.BASE_URL}/vehicles/car/arm', {
+    const response = await fetch(`${API_CONSTANTS.BASE_URL}/vehicles/car/arm`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -925,7 +925,7 @@ const initiateSurvey = async () => {
     // Immediately set survey initiation state for UI feedback
     surveyInitiated.value = true
 
-    const response = await fetch('${API_CONSTANTS.BASE_URL}/coordination/initiate-proximity-survey', {
+    const response = await fetch(`${API_CONSTANTS.BASE_URL}/coordination/initiate-proximity-survey`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -962,7 +962,7 @@ const initiateSurvey = async () => {
 // fetch coordination status
 const fetchCoordinationStatus = async () => {
   try {
-    const response = await fetch('${API_CONSTANTS.BASE_URL}/coordination/status')
+    const response = await fetch(`${API_CONSTANTS.BASE_URL}/coordination/status`)
     const data = await response.json()
 
     console.log('Coordination status on load:', data)

@@ -19,18 +19,18 @@
         :status-color="statusColor"
       />
 
+
       <SurveyButtonCard
         :distance="distance"
         :survey-button-enabled="surveyButtonEnabled"
         @initiate-survey="$emit('initiate-survey')"
       />
+      <DroneStatusCard
+        :telemetry-data="droneTelemetryData"
+      />
       <VehicleStatusCard
         :vehicle-location="vehicleLocation"
         :vehicle-telemetry-data="vehicleTelemetryData"
-      />
-
-      <DroneStatusCard
-        :telemetry-data="droneTelemetryData"
       />
 
 
@@ -42,32 +42,32 @@
 </template>
 
 <script setup>
-  import DistanceStatusCard from './info-panel/DistanceStatusCard.vue'
-  import DroneStatusCard from './info-panel/DroneStatusCard.vue'
-  import VehicleStatusCard from './info-panel/VehicleStatusCard.vue'
-  import SurveyButtonCard from './info-panel/SurveyButtonCard.vue'
-  import OperatorInstructionsCard from './info-panel/OperatorInstructionsCard.vue'
-  import MissionProgressCard from './info-panel/MissionProgressCard.vue'
+import DistanceStatusCard from './info-panel/DistanceStatusCard.vue'
+import DroneStatusCard from './info-panel/DroneStatusCard.vue'
+import VehicleStatusCard from './info-panel/VehicleStatusCard.vue'
+import SurveyButtonCard from './info-panel/SurveyButtonCard.vue'
+import OperatorInstructionsCard from './info-panel/OperatorInstructionsCard.vue'
+import MissionProgressCard from './info-panel/MissionProgressCard.vue'
 
 
-  const props = defineProps({
-    droneTelemetryData: {
-      type: Object,
-      required: true,
-    },
-    vehicleTelemetryData: {
-      type: Object,
-      required: true,
-    },
-    distance: { type: Number, required: true },
-    status: { type: String, required: true },
-    statusColor: { type: Object, required: true },
-    vehicleLocation: { type: String, required: true },
-    instructions: { type: String, required: true },
-    instructionCard: { type: Object, required: true },
-    missionSteps: { type: Array, required: true },
-    surveyButtonEnabled: { type: Boolean, default: false },
-  })
+const props = defineProps({
+  droneTelemetryData: {
+    type: Object,
+    required: true,
+  },
+  vehicleTelemetryData: {
+    type: Object,
+    required: true,
+  },
+  distance: {type: Number, required: true},
+  status: {type: String, required: true},
+  statusColor: {type: Object, required: true},
+  vehicleLocation: {type: String, required: true},
+  instructions: {type: String, required: true},
+  instructionCard: {type: Object, required: true},
+  missionSteps: {type: Array, required: true},
+  surveyButtonEnabled: {type: Boolean, default: false},
+})
 </script>
 
 <style scoped>

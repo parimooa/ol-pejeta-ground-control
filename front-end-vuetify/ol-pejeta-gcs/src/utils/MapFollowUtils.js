@@ -1,10 +1,11 @@
 import { fromLonLat } from 'ol/proj'
+import { TIMING_CONSTANTS } from '@/config/constants.js'
 
 // Consolidated follow functionality
 export class MapFollowManager {
   constructor () {
     this.lastFollowUpdate = 0
-    this.followUpdateThrottle = 100 // milliseconds between follow updates
+    this.followUpdateThrottle = TIMING_CONSTANTS.FOLLOW_UPDATE_THROTTLE
     this.isUserInteracting = false
   }
 

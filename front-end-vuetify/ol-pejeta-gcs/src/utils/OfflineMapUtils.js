@@ -8,6 +8,7 @@ import { getTopLeft, getWidth } from 'ol/extent'
 import TileSource from 'ol/source/Tile'
 import XYZ from 'ol/source/XYZ'
 import OSM from 'ol/source/OSM'
+import { MAP_CONSTANTS, HTTP_CONSTANTS } from '@/config/constants.js'
 
 // Database name and version
 const DB_NAME = 'ol-pejeta-map-tiles'
@@ -184,7 +185,7 @@ export function createOfflineXYZSource (options) {
           xhr.responseType = 'blob'
 
           xhr.onload = () => {
-            if (xhr.status === 200) {
+            if (xhr.status === HTTP_CONSTANTS.OK) {
               const blob = xhr.response
               // Store the tile in IndexedDB
               storeTile(mapType, tileKey, blob).catch(err => {
@@ -242,7 +243,7 @@ export function createOfflineOSMSource () {
           xhr.responseType = 'blob'
 
           xhr.onload = () => {
-            if (xhr.status === 200) {
+            if (xhr.status === HTTP_CONSTANTS.OK) {
               const blob = xhr.response
               // Store the tile in IndexedDB
               storeTile('osm', tileKey, blob).catch(err => {
@@ -329,7 +330,7 @@ export function downloadMapTiles (options) {
       const centerCoord = fromLonLat(center)
 
       // Calculate extent based on center and radius
-      const radiusInMeters = radius * 1000
+      const radiusInMeters = radius * 1000 // Keep conversion factor as is
       const extent = [
         centerCoord[0] - radiusInMeters,
         centerCoord[1] - radiusInMeters,
@@ -361,8 +362,8 @@ export function downloadMapTiles (options) {
       const promises = []
 
       for (let z = minZoom; z <= maxZoom; z++) {
-        const resolution = getWidth(extent) / 256 / Math.pow(2, z)
-        const tileSize = 256 * resolution
+        const resolution = getWidth(extent) / MAP_CONSTANTS.TILE_SIZE / Math.pow(2, z)
+        const tileSize = MAP_CONSTANTS.TILE_SIZE * resolution
 
         const minX = Math.floor((extent[0] - getTopLeft(extent)[0]) / tileSize)
         const maxX = Math.ceil((extent[2] - getTopLeft(extent)[0]) / tileSize)
@@ -390,7 +391,7 @@ export function downloadMapTiles (options) {
                   xhr.responseType = 'blob'
 
                   xhr.onload = () => {
-                    if (xhr.status === 200) {
+                    if (xhr.status === HTTP_CONSTANTS.OK) {
                       const blob = xhr.response
                       // Store tile in IndexedDB
                       storeTile(mapType, tileKey, blob)

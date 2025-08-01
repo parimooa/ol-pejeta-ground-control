@@ -134,7 +134,7 @@ class SurveyService:
             center_waypoint, heading
         )
         num_scan_points = len(scan_waypoints)
-        print(f"✅ Generated {num_scan_points} waypoints for the scan.")
+        print(f"Generated {num_scan_points} waypoints for the scan.")
 
         # Convert to Waypoint objects for upload
         waypoint_objects = []
@@ -175,28 +175,28 @@ class SurveyService:
         print("\n--- Uploading Lawnmower Mission to Drone ---")
         upload_success = drone_vehicle.upload_mission(waypoint_objects)
         if not upload_success:
-            print("❌ Failed to upload scan mission to drone.")
+            print("Failed to upload scan mission to drone.")
             return False
 
         print("\n--- Executing Lawnmower Scan in AUTO Mode ---")
         if car_vehicle:
             print(
-                f"🚗 Monitoring car position - will abandon scan if car moves > {max_car_distance}m from waypoint"
+                f"Monitoring car position - will abandon scan if car moves > {max_car_distance}m from waypoint"
             )
 
         # Switch to AUTO mode to execute the mission
         from backend.core.flight_modes import FlightMode
 
         if not drone_vehicle.set_mode(FlightMode.AUTO):
-            print("❌ Failed to set drone to AUTO mode.")
+            print("Failed to set drone to AUTO mode.")
             return False
 
         # Start the mission
         if not drone_vehicle.start_mission():
-            print("❌ Failed to start drone mission.")
+            print("Failed to start drone mission.")
             return False
 
-        print("✅ Drone executing lawnmower scan mission")
+        print("Drone executing lawnmower scan mission")
 
         # Monitor mission progress and car position
         print("Drone executing scan mission in AUTO mode...")
@@ -300,11 +300,11 @@ class SurveyService:
             return False
         return_home_position = drone_vehicle.position()
         if not return_home_position or not return_home_position.get("latitude"):
-            print("❌ Could not get drone's current position to set as return point.")
+            print("Could not get drone's current position to set as return point.")
             return False
 
         print(
-            f"🚁 Setting return point to current drone position: {return_home_position['latitude']:.6f}, {return_home_position['longitude']:.6f}"
+            f"Setting return point to current drone position: {return_home_position['latitude']:.6f}, {return_home_position['longitude']:.6f}"
         )
         print(
             f"\n--- Generating Proximity Survey Pattern (max {max_distance_from_center}m from center) ---"
@@ -316,7 +316,7 @@ class SurveyService:
         )
 
         num_scan_points = len(scan_waypoints)
-        print(f"✅ Generated {num_scan_points} waypoints for proximity survey.")
+        print(f"Generated {num_scan_points} waypoints for proximity survey.")
 
         # Convert to Waypoint objects for upload
         waypoint_objects = []
@@ -359,7 +359,7 @@ class SurveyService:
         print("\n--- Uploading Proximity Survey Mission to Drone ---")
         upload_success = drone_vehicle.upload_mission(waypoint_objects)
         if not upload_success:
-            print("❌ Failed to upload proximity survey mission to drone.")
+            print("Failed to upload proximity survey mission to drone.")
             return False
 
         print("\n--- Executing Proximity Survey in AUTO Mode ---")
@@ -368,36 +368,36 @@ class SurveyService:
         from backend.core.flight_modes import FlightMode
 
         if not drone_vehicle.set_mode(FlightMode.AUTO):
-            print("❌ Failed to set drone to AUTO mode.")
+            print("Failed to set drone to AUTO mode.")
             return False
 
         # Start the mission
         if not drone_vehicle.start_mission():
-            print("❌ Failed to start drone mission.")
+            print("Failed to start drone mission.")
             return False
 
-        print("✅ Drone executing proximity survey mission")
+        print("Drone executing proximity survey mission")
 
         # Monitor mission progress
-        print("🚁 Drone executing proximity survey...")
+        print("Drone executing proximity survey...")
         scan_start_time = time.time()
         mission_complete = False
 
         while time.time() - scan_start_time < timeout:
             # Check if mission is complete
             if drone_vehicle.is_mission_complete():
-                print("✅ Proximity survey completed successfully!")
+                print("Proximity survey completed successfully!")
                 # Automatically switch back to GUIDED mode
-                print("🎮 Switching drone back to GUIDED mode...")
+                print("Switching drone back to GUIDED mode...")
                 # drone_vehicle.set_mode(FlightMode.GUIDED)
                 mission_complete = True
 
                 break
             await asyncio.sleep(1)
         if self.scan_abandoned:
-            print(f"\n🚨 PROXIMITY SURVEY ABANDONED!")
+            print(f"\nPROXIMITY SURVEY ABANDONED!")
             if not drone_vehicle.set_mode(FlightMode.GUIDED):
-                print("❌ Failed to switch drone to GUIDED mode after abandon.")
+                print("Failed to switch drone to GUIDED mode after abandon.")
             return False
         elif mission_complete:
             print(
@@ -406,38 +406,20 @@ class SurveyService:
             print("🎮 Switching drone back to GUIDED mode to restore control.")
             if not drone_vehicle.set_mode(FlightMode.GUIDED):
                 print(
-                    "❌ Failed to switch drone to GUIDED mode after survey completion."
+                    "Failed to switch drone to GUIDED mode after survey completion."
                 )
                 # Don't return False here, the survey itself was a success.
             await asyncio.sleep(2)  # Give time for mode change to propagate
             return True
         else:
             # Timeout occurred without completion
-            print("\n⚠️ Proximity survey timed out!")
-            print("🎮 Switching drone back to GUIDED mode as a safety measure...")
+            print("\n Proximity survey timed out!")
+            print("Switching drone back to GUIDED mode as a safety measure...")
             if not drone_vehicle.set_mode(FlightMode.GUIDED):
-                print("❌ Failed to switch drone back to GUIDED mode after timeout.")
+                print("Failed to switch drone back to GUIDED mode after timeout.")
             await asyncio.sleep(2)
             return False
 
-        #     await asyncio.sleep(2)
-        #
-        # # Handle completion
-        # if self.scan_abandoned:
-        #     print(f"\n🚨 PROXIMITY SURVEY ABANDONED!")
-        #     drone_vehicle.set_mode(FlightMode.GUIDED)
-        #     return False
-        # elif mission_complete:
-        #     # Mission completed successfully - already switched to GUIDED mode above
-        #     await asyncio.sleep(2)
-        #     return True
-        # else:
-        #     # Timeout occurred without completion
-        #     print("\n⚠️ Proximity survey timed out!")
-        #     print("🎮 Switching drone back to GUIDED mode...")
-        #     drone_vehicle.set_mode(FlightMode.GUIDED)
-        #     await asyncio.sleep(2)
-        #     return False
 
     async def _generate_constrained_lawnmower_waypoints(
         self, center_point: Dict, max_distance: float

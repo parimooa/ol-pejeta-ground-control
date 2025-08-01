@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING
 
 from backend.api.websockets.telemetry import telemetry_manager
 from backend.core.flight_modes import FlightMode
-from backend.services.vehicle_service import vehicle_service
 from backend.services.survey_service import survey_service
+from backend.services.vehicle_service import vehicle_service
 
 try:
     from settings import site_name as configured_site_name
@@ -42,6 +42,7 @@ class CoordinationService:
         )
         self._survey_start_time = None
         self._survey_end_time = None
+        self._survey_initiated_waypoint_id = None
 
     @staticmethod
     def _calculate_distance(pos1, pos2) -> float:
@@ -58,8 +59,8 @@ class CoordinationService:
         dlat = lat2_rad - lat1_rad
         dlon = lon2_rad - lon1_rad
         a = (
-            math.sin(dlat / 2) ** 2
-            + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2) ** 2
+                math.sin(dlat / 2) ** 2
+                + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2) ** 2
         )
         c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
         return R * c
@@ -108,7 +109,7 @@ class CoordinationService:
                 seconds = int(duration_seconds % 60)
                 duration_formatted = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
-                print(f"⏱️ Survey duration: {duration_formatted} ({duration_seconds:.1f} seconds)")
+                print(f"Survey duration: {duration_formatted} ({duration_seconds:.1f} seconds)")
 
             # Get car position for the closest waypoint calculation
             car_position = car.position()
@@ -136,15 +137,13 @@ class CoordinationService:
                 ],
                 "vehicleId": str(drone.vehicle_id),
                 "completedAt": timestamp.isoformat(),
-                "mission_waypoint_id": closest_waypoint_id,
-                "closestWaypoint": closest_waypoint_id,
+                "mission_waypoint_id": self._survey_initiated_waypoint_id,
                 "scan_abandoned": survey_service.scan_abandoned,
                 "savedAt": timestamp.isoformat(),
                 "startTime": self._survey_start_time.isoformat() if self._survey_start_time else None,
                 "endTime": self._survey_end_time.isoformat() if self._survey_end_time else None,
                 "durationSeconds": duration_seconds,
-                "durationFormatted": duration_formatted,
-
+                "durationFormatted": duration_formatted
             }
 
             # Load existing survey data if file exists
@@ -155,7 +154,6 @@ class CoordinationService:
                 try:
                     with open(file_path, "r") as f:
                         existing_data = json.load(f)
-                        # Handle both old format (single survey) and new format (array)
                         if isinstance(existing_data, list):
                             existing_surveys = existing_data
                         elif isinstance(existing_data, dict):
@@ -181,7 +179,7 @@ class CoordinationService:
             return True
 
         except Exception as e:
-            print(f"❌ Error saving survey file: {e}")
+            print(f"Error saving survey file: {e}")
             return False
 
     def _is_drone_surveying(self, drone: "Vehicle") -> bool:
@@ -207,9 +205,9 @@ class CoordinationService:
 
         # Determine if survey button should be enabled
         should_enable = (
-            self.proximity_threshold >= distance > 0
-            and not self._survey_mode_detected
-            and self._is_following
+                self.proximity_threshold >= distance > 0
+                and not self._survey_mode_detected
+                and self._is_following
         )
 
         # Only broadcast if state changed
@@ -475,6 +473,10 @@ class CoordinationService:
                 "lon": drone_pos.get("longitude"),
                 "alt": self.follow_altitude,
             }
+        car_waypoints = car.mission_waypoints
+        self._survey_initiated_waypoint_id = self._find_closest_car_waypoint(
+            car_pos, car_waypoints
+        )
 
         # Use car position as survey center
         survey_center = {

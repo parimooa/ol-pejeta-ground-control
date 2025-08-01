@@ -473,7 +473,7 @@ const updateOperatorInstructions = () => {
           const speedGuidance = vehicleSpeed > 5 ? ' - SLOW DOWN' : (vehicleSpeed < 0.5 ? ' - START MOVING' : '')
           instruction = `${turnInstruction} to head ${compassDirection} for ${Math.round(wpDistance)}m to waypoint ${waypointNumber}/${totalWaypoints}${speedGuidance}.`
         } else {
-          instruction = `🧭 Drive ${compassDirection} (${targetDirection.toLowerCase()}) for ${Math.round(wpDistance)}m to reach waypoint ${waypointNumber}/${totalWaypoints}.`
+          instruction = `Drive ${compassDirection} (${targetDirection.toLowerCase()}) for ${Math.round(wpDistance)}m to reach waypoint ${waypointNumber}/${totalWaypoints}.`
         }
         instructionType.value = 'action'
       }
@@ -483,7 +483,7 @@ const updateOperatorInstructions = () => {
   // if (droneContext === 'mission_active') {
   //   if (isCoordinationActive.value) {
   if (DISTANCE_CONSTANTS.MAX_SAFE_DISTANCE > distance.value > DISTANCE_CONSTANTS.WARNING_THRESHOLD) {
-    instruction = '⚠️ MOVE TOWARDS DRONE: Drive closer to drone position for coordination. Check drone location on map.'
+    instruction = 'MOVE TOWARDS DRONE: Drive closer to drone position for coordination. Check drone location on map.'
     instructionType.value = 'warning'
   } else if (distance.value > DISTANCE_CONSTANTS.CRITICAL_THRESHOLD) {
     instruction = '🚨 CRITICAL: MOVE CLOSER TO DRONE - Distance exceeds 500m safety limit. Drive towards drone position immediately!'

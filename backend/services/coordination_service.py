@@ -136,7 +136,6 @@ class CoordinationService:
                 ],
                 "vehicleId": str(drone.vehicle_id),
                 "completedAt": timestamp.isoformat(),
-                "siteName": self.current_site_name,
                 "mission_waypoint_id": closest_waypoint_id,
                 "closestWaypoint": closest_waypoint_id,
                 "scan_abandoned": survey_service.scan_abandoned,
@@ -162,7 +161,7 @@ class CoordinationService:
                         elif isinstance(existing_data, dict):
                             existing_surveys = [existing_data]
                 except (json.JSONDecodeError, IOError) as e:
-                    print(f"⚠️ Warning: Could not read existing file {filename}: {e}")
+                    print(f"Warning: Could not read existing file {filename}: {e}")
                     existing_surveys = []
 
             # Add new survey to array
@@ -172,12 +171,12 @@ class CoordinationService:
             with open(file_path, "w") as f:
                 json.dump(existing_surveys, f, indent=2)
 
-            print(f"✅ Survey saved successfully: {filename}")
-            print(f"📁 File path: {file_path.absolute()}")
-            print(f"📊 Total surveys in file: {len(existing_surveys)}")
-            print(f"🚁 Drone waypoints: {len(survey_data['waypoints'])}")
-            print(f"🚗 Closest car waypoint: {closest_waypoint_id}")
-            print(f"❌ Scan abandoned: {survey_service.scan_abandoned}")
+            print(f"Survey saved successfully: {filename}")
+            print(f"File path: {file_path.absolute()}")
+            print(f"Total surveys in file: {len(existing_surveys)}")
+            print(f"Drone waypoints: {len(survey_data['waypoints'])}")
+            print(f"Closest car waypoint: {closest_waypoint_id}")
+            print(f"Scan abandoned: {survey_service.scan_abandoned}")
 
             return True
 
@@ -254,7 +253,7 @@ class CoordinationService:
 
             if is_surveying and not self._last_survey_mode_state:
                 self._survey_start_time = datetime.now()
-                print(f"📊 Survey started at: {self._survey_start_time.isoformat()}")
+                print(f"Survey started at: {self._survey_start_time.isoformat()}")
                 telemetry_manager.broadcast_event(
                     {
                         "event": "survey_started",
@@ -266,13 +265,13 @@ class CoordinationService:
             # Check for survey completion (transition from surveying to not surveying)
             if self._last_survey_mode_state and not is_surveying:
                 self._survey_end_time = datetime.now()
-                print("🎉 Survey completed - drone switched back to GUIDED mode")
+                print("Survey completed - drone switched back to GUIDED mode")
 
                 # Save completed survey data to file
                 if self._save_completed_survey(drone, car):
-                    print("📄 Survey data saved to file successfully")
+                    print("Survey data saved to file successfully")
                 else:
-                    print("❌ Failed to save survey data to file")
+                    print("Failed to save survey data to file")
 
                 # Clear the survey flag when survey completes
                 # self._survey_initiated_by_user = False
@@ -501,7 +500,7 @@ class CoordinationService:
         # Mark that we initiated this survey
         self._survey_initiated_by_user = True
 
-        # Execute survey with constrained pattern
+        # Execute  survey with a constrained pattern
         success = await survey_service.execute_proximity_survey(
             survey_center,
             max_distance_from_center=self.max_distance

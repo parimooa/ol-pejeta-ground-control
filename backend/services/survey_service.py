@@ -257,15 +257,15 @@ class SurveyService:
 
         # Handle different completion scenarios
         if self.scan_abandoned:
-            print(f"\n🚨 SCAN ABANDONED - Car moved too far!")
-            print("🚁 Switching drone to GUIDED mode...")
+            print(f"\nSCAN ABANDONED - Car moved too far!")
+            print("Switching drone to GUIDED mode...")
 
             # Switch to GUIDED mode immediately
             if not drone_vehicle.set_mode(FlightMode.GUIDED):
-                print("❌ Failed to switch drone to GUIDED mode.")
+                print("Failed to switch drone to GUIDED mode.")
                 return False
 
-            print("✅ Drone ready to follow car position")
+            print("Drone ready to follow car position")
             return False  # Scan was abandoned
 
         elif mission_complete:
@@ -274,10 +274,10 @@ class SurveyService:
             return True
         else:
             # Timeout occurred without completion
-            print("\n⚠️ Lawnmower scan timed out!")
-            print("🎮 Switching drone back to GUIDED mode...")
+            print("\nLawnmower scan timed out!")
+            print("Switching drone back to GUIDED mode...")
             if not drone_vehicle.set_mode(FlightMode.GUIDED):
-                print("❌ Failed to switch drone back to GUIDED mode.")
+                print("Failed to switch drone back to GUIDED mode.")
                 return False
             await asyncio.sleep(2)
             return False

@@ -233,7 +233,7 @@ const operationalStatus = computed(() => {
     // Armed and active - need to check flight mode for more specific status
     if (custom_mode === 3 && props.telemetryData.velocity.ground_speed > 1) {
       // Auto mode - likely executing mission
-      actualStatus = 'Executing Mission'
+      actualStatus = 'Executing Survey'
     } else if (custom_mode === 4) {
       // Guided mode
       actualStatus = guided_enabled ? 'Guided Flight' : 'Armed'

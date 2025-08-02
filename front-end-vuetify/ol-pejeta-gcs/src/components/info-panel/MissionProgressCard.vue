@@ -2,7 +2,7 @@
   <v-card class="mb-2 rounded-lg mx-auto" elevation="10">
     <v-card-title class="d-flex justify-space-between align-center">
       <div class="d-flex align-center">
-        <span>Mission History</span>
+        <span>Mission Progress</span>
         <v-btn
           :loading="loading"
           class="ml-2"
@@ -12,65 +12,77 @@
           @click="refreshSurveyLogs"
         />
       </div>
-      <v-chip v-if="totalLogs > 0" color="primary" size="small" variant="tonal">
-        {{ totalLogs }} Waypoints Surveyed
+      <v-chip v-if="surveyedCount > 0" color="primary" size="small" variant="tonal">
+        {{ surveyedCount }} / {{ totalWaypoints }} Surveyed
       </v-chip>
     </v-card-title>
 
     <v-divider />
+
     <v-card-text class="pa-0">
       <div ref="scrollContainer" class="timeline-container">
-        <v-timeline v-if="surveyLogs.length > 0" density="comfortable" align="start">
+        <v-timeline v-if="timelineItems.length > 0">
+          <!-- START: Corrected timeline item implementation -->
           <v-timeline-item
-            v-for="(log, index) in surveyLogs"
-            :key="log.mission_waypoint_id"
-            :dot-color="getGroupDotColor(log)"
+            v-for="(item, index) in timelineItems"
+            :key="item.seq"
+            :dot-color="item.dotColor"
             fill-dot
-            size="x-small"
+            size="small"
           >
+            <template #icon>
+              <span class="text-white font-weight-bold" style="font-size: 0.7rem;">
+                {{ item.seq + 1 }}
+              </span>
+            </template>
+            <!-- END: Corrected timeline item implementation -->
 
-            <div class="d-flex justify-space-between align-start">
-              <div>
-                <div class="font-weight-bold">
-                  Waypoint {{ log.mission_waypoint_id }}
-                </div>
-                <div class="text-caption text-medium-emphasis">
-                  Last surveyed: {{ formatDateTime(log.last_surveyed_at) }}
-                </div>
-              </div>
-              <v-menu open-on-hover :location="index % 2 === 0 ? 'end' : 'start'">
+            <div class="d-flex justify-space-between align-center" style="min-height: 24px;">
+              <!-- This menu will only appear if the waypoint has been surveyed -->
+              <v-menu v-if="item.type === 'surveyed'" open-on-hover :location="index % 2 === 0 ? 'end' : 'start'">
                 <template #activator="{ props }">
                   <v-chip
                     v-bind="props"
-                    :color="getSurveyCountColor(log.survey_count)"
+                    color="primary"
                     class="ml-2"
                     size="small"
                     variant="flat"
                   >
-                    Surveyed {{ log.survey_count }}x
+                    Surveyed {{ item.surveyData.survey_count }}x
                   </v-chip>
                 </template>
                 <v-card class="pa-2" elevation="8" max-width="350">
                   <v-list-item-title class="font-weight-bold mb-2">
-                    Survey Details for Waypoint {{ log.mission_waypoint_id }}
+                    Survey Details for Waypoint {{ item.seq + 1 }}
                   </v-list-item-title>
                   <v-divider/>
                   <v-list density="compact">
                     <v-list-item
-                      v-for="instance in log.instances"
+                      v-for="instance in item.surveyData.instances"
                       :key="instance.id"
                       class="px-1"
                     >
                       <template #prepend>
-                        <v-icon :color="instance.scan_abandoned ? 'error' : 'success'" size="x-small">
-                          {{ instance.scan_abandoned ? 'mdi-alert-circle-outline' : 'mdi-check-circle-outline' }}
+                        <v-icon :color="instance.survey_abandoned ? 'error' : 'success'" size="x-small">
+                          {{ instance.survey_abandoned ? 'mdi-alert-circle-outline' : 'mdi-check-circle-outline' }}
                         </v-icon>
                       </template>
-                      <div class="text-caption ml-2">
-                        {{ formatDateTime(instance.completed_at) }}
-                        <span v-if="!instance.scan_abandoned && instance.duration_formatted !== 'N/A'">
-                          ({{ instance.duration_formatted }})
+                      <div class="text-caption ml-2 d-flex align-center flex-wrap">
+                        <span>
+                          {{ formatDateTime(instance.completed_at) }}
+                          <span v-if="!instance.survey_abandoned && instance.duration_formatted !== 'N/A'">
+                            ({{ instance.duration_formatted }})
+                          </span>
                         </span>
+                        <v-chip
+                          v-if="instance.waypoint_count > 0"
+                          class="ml-2"
+                          color="error"
+                          size="x-small"
+                          variant="tonal"
+                        >
+                          {{ instance.waypoint_count }} Waypoints
+                        </v-chip>
                       </div>
                     </v-list-item>
                   </v-list>
@@ -84,17 +96,27 @@
           <v-progress-circular color="primary" indeterminate size="24"></v-progress-circular>
         </div>
 
-        <div v-if="!loading && surveyLogs.length === 0" class="text-center pa-8 text-grey">
-          <v-icon class="mb-2" size="48">mdi-history</v-icon>
-          <div>No survey history found.</div>
-          <div class="text-caption">Complete a survey to see it here.</div>
+        <div v-if="!loading && timelineItems.length === 0" class="text-center pa-8 text-grey">
+          <v-icon class="mb-2" size="48">mdi-map-marker-path</v-icon>
+          <div>No mission loaded for the car.</div>
         </div>
       </div>
     </v-card-text>
   </v-card>
-</template><script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+</template>
+
+
+
+<script setup>
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { API_CONSTANTS } from '@/config/constants.js'
+
+const props = defineProps({
+  carWaypoints: {
+    type: Object,
+    default: () => ({})
+  },
+})
 
 const surveyLogs = ref([])
 const loading = ref(false)
@@ -104,12 +126,6 @@ const totalLogs = ref(0)
 const hasMore = ref(true)
 const scrollContainer = ref(null)
 
-const getGroupDotColor = (log) => {
-  const hasAbandoned = log.instances.some(instance => instance.scan_abandoned);
-  return hasAbandoned ? 'error' : 'primary';
-};
-
-
 const formatDateTime = (isoString) => {
   if (!isoString) return 'N/A'
   try {
@@ -118,12 +134,6 @@ const formatDateTime = (isoString) => {
   } catch (e) {
     return 'Invalid Date'
   }
-}
-
-const getSurveyCountColor = (count) => {
-  if (count > 5) return 'error'
-  if (count > 2) return 'warning'
-  return 'success'
 }
 
 const loadSurveyLogs = async () => {
@@ -150,18 +160,15 @@ const loadSurveyLogs = async () => {
   }
 }
 
-
 const refreshSurveyLogs = async () => {
   if (loading.value) return;
   console.log('Refreshing survey history...');
-  // Reset the state to start from the beginning
   surveyLogs.value = [];
   page.value = 1;
   hasMore.value = true;
   totalLogs.value = 0;
   await loadSurveyLogs();
 };
-
 
 const handleScroll = () => {
   const container = scrollContainer.value
@@ -172,6 +179,57 @@ const handleScroll = () => {
     }
   }
 }
+
+// --- START: New Computed Properties for Merging Data ---
+
+// Create a map of survey history for efficient lookups
+const surveyHistoryMap = computed(() => {
+  const map = {};
+  for (const log of surveyLogs.value) {
+    map[log.mission_waypoint_id] = log;
+  }
+  return map;
+});
+
+// The main computed property that builds the unified timeline
+const timelineItems = computed(() => {
+  const allWaypoints = props.carWaypoints;
+  if (!allWaypoints || Object.keys(allWaypoints).length === 0) {
+    return [];
+  }
+
+  return Object.values(allWaypoints)
+    .sort((a, b) => a.seq - b.seq)
+    .map(wp => {
+      const waypointId = wp.seq + 1; // Mission waypoints are 1-indexed in survey logs
+      const surveyInfo = surveyHistoryMap.value[waypointId];
+
+      if (surveyInfo) {
+        // This waypoint has been surveyed. Use the rich survey data.
+        const hasAbandoned = surveyInfo.instances.some(inst => inst.survey_abandoned);
+        return {
+          ...wp,
+          type: 'surveyed',
+          surveyData: surveyInfo,
+          dotColor: hasAbandoned ? 'error' : 'success'
+        };
+      } else {
+        // This is a pending/unvisited waypoint.
+        return {
+          ...wp,
+          type: 'pending',
+          dotColor: 'grey-lighten-1'
+        };
+      }
+    });
+});
+
+const totalWaypoints = computed(() => timelineItems.value.length);
+const surveyedCount = computed(() => {
+  return timelineItems.value.filter(item => item.type === 'surveyed').length;
+});
+
+// --- END: New Computed Properties ---
 
 onMounted(() => {
   loadSurveyLogs() // Initial load

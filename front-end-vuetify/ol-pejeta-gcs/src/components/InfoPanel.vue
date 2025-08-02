@@ -19,7 +19,6 @@
         :status-color="statusColor"
       />
 
-
       <SurveyButtonCard
         :distance="distance"
         :survey-button-enabled="surveyButtonEnabled"
@@ -32,8 +31,10 @@
         :vehicle-location="vehicleLocation"
         :vehicle-telemetry-data="vehicleTelemetryData"
       />
-
-      <MissionProgressCard/>
+      <!-- Pass the new props to the MissionProgressCard -->
+      <MissionProgressCard
+        :carWaypoints="carMissionWaypoints"
+      />
     </div>
   </v-navigation-drawer>
 </template>
@@ -63,6 +64,12 @@ const props = defineProps({
   instructions: {type: String, required: true},
   instructionCard: {type: Object, required: true},
   surveyButtonEnabled: {type: Boolean, default: false},
+  // Add new props to accept car mission data
+  carMissionWaypoints: {
+    type: Object,
+    default: () => ({})
+  },
+
 })
 </script>
 

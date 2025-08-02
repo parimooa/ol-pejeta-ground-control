@@ -18,7 +18,7 @@ class SurveyLogService:
         self.surveys_dir.mkdir(exist_ok=True)
 
     async def get_grouped_logs_paginated(
-            self, page: int, limit: int
+        self, page: int, limit: int
     ) -> Tuple[List[GroupedSurveyLog], int]:
         """
         Reads all survey JSON files, groups them by mission waypoint,
@@ -65,7 +65,8 @@ class SurveyLogService:
                             id=inst.get("id"),
                             completed_at=inst.get("completed_at"),
                             duration_formatted=inst.get("duration_formatted", "N/A"),
-                            scan_abandoned=inst.get("scan_abandoned", False),
+                            survey_abandoned=inst.get("survey_abandoned", False),
+                            waypoint_count=len(inst.get("waypoints", [])),
                         )
                         for inst in instances
                     ],

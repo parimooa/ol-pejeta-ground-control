@@ -15,7 +15,7 @@ from ..models.waypoint import Waypoint
 from ..schemas.survey import SurveyData
 
 # Global scan abandon flag
-scan_abandoned = False
+survey_abandoned = False
 
 
 class SurveyService:
@@ -24,7 +24,7 @@ class SurveyService:
     def __init__(self):
         self.current_waypoint_index = 0
         self.mission_waypoints: List[Waypoint] = []
-        self.scan_abandoned = False
+        self.survey_abandoned = False
 
     @staticmethod
     async def calculate_distance(pos1: Dict, pos2: Dict) -> float:
@@ -170,7 +170,7 @@ class SurveyService:
                 "vehicleId": str(drone.vehicle_id),
                 "completed_at": timestamp.isoformat(),
                 "mission_waypoint_id": self._survey_initiated_waypoint_id,
-                "scan_abandoned": survey_service.scan_abandoned,
+                "survey_abandoned": survey_service.survey_abandoned,
                 "saved_at": timestamp.isoformat(),
                 "start_time": (
                     self._survey_start_time.isoformat()
@@ -212,7 +212,7 @@ class SurveyService:
             print(f"Total surveys in file: {len(existing_surveys)}")
             print(f"Drone waypoints: {len(survey_data['waypoints'])}")
             print(f"Closest car waypoint: {closest_waypoint_id}")
-            print(f"Scan abandoned: {survey_service.scan_abandoned}")
+            print(f"Scan abandoned: {survey_service.survey_abandoned}")
 
             return True
 
@@ -230,7 +230,7 @@ class SurveyService:
         max_car_distance: float = 20,
     ) -> bool:
         """Generates a lawnmower pattern and executes it in AUTO mode with car monitoring."""
-        self.scan_abandoned = False  # Reset flag at start of scan
+        self.survey_abandoned = False  # Reset flag at start of scan
 
         # Get drone vehicle
         drone_vehicle = vehicle_service.get_vehicle("drone")
@@ -352,7 +352,7 @@ class SurveyService:
                         print(f"🚁 Abandoning scan...")
 
                         # Set global flag and switch to GUIDED mode
-                        self.scan_abandoned = True
+                        self.survey_abandoned = True
                         drone_vehicle.set_mode(FlightMode.GUIDED)
                         break
                     else:
@@ -368,7 +368,7 @@ class SurveyService:
             await asyncio.sleep(2)
 
         # Handle different completion scenarios
-        if self.scan_abandoned:
+        if self.survey_abandoned:
             print(f"\nSCAN ABANDONED - Car moved too far!")
             print("Switching drone to GUIDED mode...")
 
@@ -402,7 +402,7 @@ class SurveyService:
         timeout: int = 320,
     ) -> bool:
         """Execute a proximity survey constrained to stay within max_distance_from_center."""
-        self.scan_abandoned = False
+        self.survey_abandoned = False
         survey_result = False
 
         # Get drone vehicle
@@ -504,7 +504,7 @@ class SurveyService:
         #
         #     await asyncio.sleep(1)
         # scan_end_datetime = datetime.now()
-        # if self.scan_abandoned:
+        # if self.survey_abandoned:
         #     print(f"\nPROXIMITY SURVEY ABANDONED!")
         #     survey_result = False
         # elif mission_complete:
@@ -524,7 +524,7 @@ class SurveyService:
         #
         # mission_waypoint_id=None
         # survey_data = SurveyData(waypoints=scan_waypoints, start_time=scan_start_datetime,
-        #                          scan_abandoned=self.scan_abandoned, vehicleId=car_vehicle.vehicle_id,
+        #                          survey_abandoned=self.survey_abandoned, vehicleId=car_vehicle.vehicle_id,
         #                          end_time=scan_end_datetime,
         #                          mission_waypoint_id=mission_waypoint_id)
         #
@@ -657,7 +657,7 @@ class SurveyService:
     def reset_mission(self):
         """Reset the mission to the beginning"""
         self.current_waypoint_index = 0
-        self.scan_abandoned = False
+        self.survey_abandoned = False
 
 
 # Global instance

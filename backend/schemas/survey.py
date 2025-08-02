@@ -11,7 +11,7 @@ class SurveyData(BaseModel):
     vehicleId: str = "unknown"
     completed_at: str
     mission_waypoint_id: Optional[int] = None
-    scan_abandoned: bool
+    survey_abandoned: bool
     saved_at: str
     start_time: Optional[str] = None
     end_time: Optional[str] = None
@@ -68,7 +68,8 @@ class SurveyInstance(BaseModel):
     id: str
     completed_at: str
     duration_formatted: Optional[str] = "N/A"
-    scan_abandoned: bool
+    survey_abandoned: bool
+    waypoint_count: int = 0
 
 
 class GroupedSurveyLog(BaseModel):

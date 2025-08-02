@@ -118,7 +118,7 @@ class CoordinationService:
                 vehicleId=str(drone.vehicle_id),
                 completed_at=timestamp.isoformat(),
                 mission_waypoint_id=self._survey_initiated_waypoint_id,
-                scan_abandoned=survey_service.scan_abandoned,
+                survey_abandoned=survey_service.survey_abandoned,
                 saved_at=timestamp.isoformat(),
                 start_time=(
                     self._survey_start_time.isoformat()
@@ -161,7 +161,7 @@ class CoordinationService:
             print(f"Total surveys in file: {len(existing_surveys)}")
             print(f"Drone waypoints: {len(survey_data.waypoints)}")
             print(f"Closest car waypoint: {closest_waypoint_id}")
-            print(f"Scan abandoned: {survey_data.scan_abandoned}")
+            print(f"Scan abandoned: {survey_data.survey_abandoned}")
 
             return True
 
@@ -319,7 +319,7 @@ class CoordinationService:
                         f"Drone surveying but distance {distance:.1f}m > {self.max_distance}m - switching to follow mode"
                     )
                     # Abandon survey and switch to follow
-                    survey_service.scan_abandoned = True
+                    survey_service.survey_abandoned = True
                     self._survey_initiated_by_user = (
                         False  # Clear survey flag when abandoning
                     )

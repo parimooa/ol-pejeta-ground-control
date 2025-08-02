@@ -83,6 +83,9 @@
       :vehicle-location="vehicleLocation"
       :vehicle-telemetry-data="vehicleData"
       @initiate-survey="initiateSurvey"
+      :car-mission-waypoints="missionWaypoints.car"
+
+
     />
     <v-main>
       <div class="d-flex drone-tracking-container">

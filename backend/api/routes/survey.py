@@ -112,7 +112,7 @@ async def get_survey_status():
         return {
             "current_waypoint_index": survey_service.current_waypoint_index,
             "total_waypoints": len(survey_service.mission_waypoints),
-            "scan_abandoned": survey_service.scan_abandoned,
+            "survey_abandoned": survey_service.survey_abandoned,
             "mission_complete": survey_service.current_waypoint_index
             >= len(survey_service.mission_waypoints),
         }

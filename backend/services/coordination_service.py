@@ -61,8 +61,8 @@ class CoordinationService:
         dlat = lat2_rad - lat1_rad
         dlon = lon2_rad - lon1_rad
         a = (
-                math.sin(dlat / 2) ** 2
-                + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2) ** 2
+            math.sin(dlat / 2) ** 2
+            + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2) ** 2
         )
         c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
         return R * c
@@ -167,6 +167,7 @@ class CoordinationService:
 
         except Exception as e:
             import traceback
+
             print(f"Error saving survey file: {e}")
             traceback.print_exc()
             return False
@@ -194,9 +195,9 @@ class CoordinationService:
 
         # Determine if survey button should be enabled
         should_enable = (
-                self.proximity_threshold >= distance > 0
-                and not self._survey_mode_detected
-                and self._is_following
+            self.proximity_threshold >= distance > 0
+            and not self._survey_mode_detected
+            and self._is_following
         )
 
         # Only broadcast if state changed
@@ -495,7 +496,7 @@ class CoordinationService:
         success = await survey_service.execute_proximity_survey(
             survey_center,
             max_distance_from_center=self.max_distance
-                                     * 0.8,  # 80% of max distance for safety
+            * 0.8,  # 80% of max distance for safety
         )
 
         # Clear the flag when survey completes

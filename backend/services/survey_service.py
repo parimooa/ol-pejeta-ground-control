@@ -34,8 +34,8 @@ class SurveyService:
         dlat = math.radians(pos2["lat"] - pos1["lat"])
         dlon = math.radians(pos2["lon"] - pos1["lon"])
         a = (
-                math.sin(dlat / 2) ** 2
-                + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2) ** 2
+            math.sin(dlat / 2) ** 2
+            + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2) ** 2
         )
         c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
         return R * c
@@ -72,7 +72,7 @@ class SurveyService:
 
     @staticmethod
     def _meters_to_latlon_offset(
-            dx_meters: float, dy_meters: float, reference_lat: float
+        dx_meters: float, dy_meters: float, reference_lat: float
     ) -> Tuple[float, float]:
         """Converts meters offset to latitude/longitude offset."""
         dlat = dy_meters / 111320.0  # Approximate meters per degree latitude
@@ -80,7 +80,7 @@ class SurveyService:
         return dlat, dlon
 
     async def _generate_lawnmower_waypoints(
-            self, center_point: Dict, heading_deg: float
+        self, center_point: Dict, heading_deg: float
     ) -> List[Dict]:
         """Generates a rotated lawnmower pattern around a center point."""
         scan_waypoints = []
@@ -130,7 +130,7 @@ class SurveyService:
 
             if self._survey_start_time and self._survey_end_time:
                 duration_seconds = (
-                        self._survey_end_time - self._survey_start_time
+                    self._survey_end_time - self._survey_start_time
                 ).total_seconds()
 
                 # Format duration as HH:MM:SS
@@ -221,13 +221,13 @@ class SurveyService:
             return False
 
     async def execute_lawnmower_scan(
-            self,
-            center_waypoint: Dict,
-            heading: float,
-            car_vehicle_type: str = "car",
-            tolerance: float = 3.0,
-            timeout: int = CONFIG.survey.TIMEOUT_SECONDS,
-            max_car_distance: float = 20,
+        self,
+        center_waypoint: Dict,
+        heading: float,
+        car_vehicle_type: str = "car",
+        tolerance: float = 3.0,
+        timeout: int = CONFIG.survey.TIMEOUT_SECONDS,
+        max_car_distance: float = 20,
     ) -> bool:
         """Generates a lawnmower pattern and executes it in AUTO mode with car monitoring."""
         self.scan_abandoned = False  # Reset flag at start of scan
@@ -395,11 +395,11 @@ class SurveyService:
             return False
 
     async def execute_proximity_survey(
-            self,
-            center_waypoint: Dict,
-            max_distance_from_center: float = 400,
-            tolerance: float = 3.0,
-            timeout: int = 320,
+        self,
+        center_waypoint: Dict,
+        max_distance_from_center: float = 400,
+        tolerance: float = 3.0,
+        timeout: int = 320,
     ) -> bool:
         """Execute a proximity survey constrained to stay within max_distance_from_center."""
         self.scan_abandoned = False
@@ -459,7 +459,7 @@ class SurveyService:
                 lon=return_home_position["longitude"],
                 # Use the drone's current altitude for the return trip
                 alt=return_home_position.get("relative_altitude")
-                    or center_waypoint["alt"],
+                or center_waypoint["alt"],
                 command=mavutil.mavlink.MAV_CMD_NAV_WAYPOINT,
                 param1=0,
                 param2=0,
@@ -532,7 +532,7 @@ class SurveyService:
         # return survey_result
 
     async def _generate_constrained_lawnmower_waypoints(
-            self, center_point: Dict, max_distance: float
+        self, center_point: Dict, max_distance: float
     ) -> List[Dict]:
         """Generate lawnmower pattern constrained within max_distance from center."""
         scan_waypoints = []

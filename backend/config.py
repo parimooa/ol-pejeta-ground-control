@@ -6,7 +6,8 @@ from pydantic import BaseModel
 
 from settings import vehicle_settings
 
-#TODO Merge settings.py with this config
+
+# TODO Merge settings.py with this config
 class HomeLocation(BaseModel):
     lat: float
     lon: float
@@ -20,7 +21,9 @@ class VehicleConfig(BaseModel):
     protocol: str
     baud_rate: Optional[str] = None
     home_location: Optional[HomeLocation] = None
-#TODO: Create connection string here
+
+
+# TODO: Create connection string here
 
 # Default settings if settings.py is not available
 DEFAULT_VEHICLE_SETTINGS = [
@@ -112,7 +115,7 @@ class SurveyConstants:
     LOITER_RADIUS_STANDARD: float = 15.0  # meters
     LOITER_RADIUS_PROXIMITY: float = 20.0  # meters
     PROGRESS_UPDATE_INTERVAL: int = 10  # seconds
-    TIMEOUT_SECONDS: int = 320 #
+    TIMEOUT_SECONDS: int = 320  #
 
 
 @dataclass(frozen=True)
@@ -179,4 +182,3 @@ class AppConfig:
 
 # Global configuration instance
 CONFIG = AppConfig()
-

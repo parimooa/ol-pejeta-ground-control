@@ -309,12 +309,7 @@ const fetchMissionProgress = async vehicleType => {
 
 // Instructions and mission steps
 const instructions = ref('Vehicle position is currently safe. Maintain current position during drone operation.')
-const missionSteps = ref([
-  {text: 'Drone take-off', status: 'completed'},
-  {text: 'Field scanning', status: 'current', progress: 45},
-  {text: 'Data collection at points A, B, C', status: 'pending'},
-  {text: 'Return to base', status: 'pending'},
-])
+
 
 // Helper functions for navigation instructions
 const calculateBearing = (lat1, lon1, lat2, lon2) => {

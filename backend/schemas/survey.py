@@ -60,3 +60,28 @@ class SaveSurveyRequest(BaseModel):
 
 class DeleteSurveyRequest(BaseModel):
     filename: str = Field(..., description="Filename to delete")
+
+
+class SurveyInstance(BaseModel):
+    """A compact representation of a single survey event for the timeline details."""
+
+    id: str
+    completed_at: str
+    duration_formatted: Optional[str] = "N/A"
+    scan_abandoned: bool
+
+
+class GroupedSurveyLog(BaseModel):
+    """Represents a group of surveys for a single mission waypoint."""
+
+    mission_waypoint_id: int
+    survey_count: int
+    last_surveyed_at: str
+    instances: List[SurveyInstance]
+
+
+class SurveyLogResponse(BaseModel):
+    """The response model for the paginated survey logs endpoint."""
+
+    logs: List[GroupedSurveyLog]
+    total: int

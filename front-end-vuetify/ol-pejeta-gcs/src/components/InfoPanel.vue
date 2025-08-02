@@ -33,10 +33,7 @@
         :vehicle-telemetry-data="vehicleTelemetryData"
       />
 
-
-      <MissionProgressCard
-        :mission-steps="missionSteps"
-      />
+      <MissionProgressCard/>
     </div>
   </v-navigation-drawer>
 </template>
@@ -65,7 +62,6 @@ const props = defineProps({
   vehicleLocation: {type: String, required: true},
   instructions: {type: String, required: true},
   instructionCard: {type: Object, required: true},
-  missionSteps: {type: Array, required: true},
   surveyButtonEnabled: {type: Boolean, default: false},
 })
 </script>

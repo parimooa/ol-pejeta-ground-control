@@ -6,7 +6,7 @@ from pymavlink import mavutil
 from ..models.waypoint import Waypoint
 from .vehicle_service import vehicle_service
 from ..config import CONFIG
-
+from backend.core.flight_modes import FlightMode
 # Global scan abandon flag
 scan_abandoned = False
 
@@ -362,7 +362,7 @@ class SurveyService:
         print("\n--- Executing Proximity Survey in AUTO Mode ---")
 
         # Switch to AUTO mode using existing set_mode method
-        from backend.core.flight_modes import FlightMode
+
 
         if not drone_vehicle.set_mode(FlightMode.AUTO):
             print("Failed to set drone to AUTO mode.")

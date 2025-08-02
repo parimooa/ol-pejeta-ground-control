@@ -212,11 +212,11 @@ class TelemetryWebsocketManager:
         """Send periodic pings to keep the connection alive."""
         try:
             while True:
-                await asyncio.sleep(CONFIG.network.PING_INTERVAL_SECONDS)
+                await asyncio.sleep(CONFIG.network.WEBSOCKET_PING_INTERVAL)
                 try:
                     await websocket.send_text(json.dumps({"type": "ping"}))
                 except Exception:
-                    # Connection is probably closed
+
                     break
         except asyncio.CancelledError:
             pass

@@ -173,7 +173,7 @@ async def save_survey(request: SaveSurveyRequest):
         # Prepare survey data with filename
         survey_data = request.data.dict()
         survey_data["filename"] = filename
-        survey_data["savedAt"] = datetime.now().isoformat()
+        survey_data["saved_at"] = datetime.now().isoformat()
 
         # Write to a file
         with open(file_path, "w") as f:

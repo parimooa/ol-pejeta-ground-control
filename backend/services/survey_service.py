@@ -1,12 +1,19 @@
 import asyncio
-import time
+import json
 import math
+import time
+from datetime import datetime
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+
 from pymavlink import mavutil
-from ..models.waypoint import Waypoint
+
+from backend.core.flight_modes import FlightMode
 from .vehicle_service import vehicle_service
 from ..config import CONFIG
-from backend.core.flight_modes import FlightMode
+from ..models.waypoint import Waypoint
+from ..schemas.survey import SurveyData
+
 # Global scan abandon flag
 scan_abandoned = False
 
@@ -27,8 +34,8 @@ class SurveyService:
         dlat = math.radians(pos2["lat"] - pos1["lat"])
         dlon = math.radians(pos2["lon"] - pos1["lon"])
         a = (
-            math.sin(dlat / 2) ** 2
-            + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2) ** 2
+                math.sin(dlat / 2) ** 2
+                + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2) ** 2
         )
         c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
         return R * c
@@ -65,7 +72,7 @@ class SurveyService:
 
     @staticmethod
     def _meters_to_latlon_offset(
-        dx_meters: float, dy_meters: float, reference_lat: float
+            dx_meters: float, dy_meters: float, reference_lat: float
     ) -> Tuple[float, float]:
         """Converts meters offset to latitude/longitude offset."""
         dlat = dy_meters / 111320.0  # Approximate meters per degree latitude
@@ -73,7 +80,7 @@ class SurveyService:
         return dlat, dlon
 
     async def _generate_lawnmower_waypoints(
-        self, center_point: Dict, heading_deg: float
+            self, center_point: Dict, heading_deg: float
     ) -> List[Dict]:
         """Generates a rotated lawnmower pattern around a center point."""
         scan_waypoints = []
@@ -107,14 +114,120 @@ class SurveyService:
                 )
         return scan_waypoints
 
+    def _save_completed_survey(self, drone: "Vehicle", car: "Vehicle"):
+        """Save completed survey data to JSON file."""
+        try:
+            # Ensure surveys directory exists
+            surveys_dir = Path(CONFIG.directories.SURVEYED_AREA)
+            surveys_dir.mkdir(exist_ok=True)
+
+            # Get current timestamp
+            timestamp = datetime.now()
+            survey_id = f"survey_{drone.vehicle_id}_{int(timestamp.timestamp())}"
+
+            duration_seconds = None
+            duration_formatted = None
+
+            if self._survey_start_time and self._survey_end_time:
+                duration_seconds = (
+                        self._survey_end_time - self._survey_start_time
+                ).total_seconds()
+
+                # Format duration as HH:MM:SS
+                hours = int(duration_seconds // 3600)
+                minutes = int((duration_seconds % 3600) // 60)
+                seconds = int(duration_seconds % 60)
+                duration_formatted = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+                print(
+                    f"Survey duration: {duration_formatted} ({duration_seconds:.1f} seconds)"
+                )
+
+            # Get car position for the closest waypoint calculation
+            car_position = car.position()
+            car_waypoints = car.mission_waypoints
+            closest_waypoint_id = self._find_closest_car_waypoint(
+                car_position, car_waypoints
+            )
+
+            # Generate filename
+            site_name_clean = (
+                self.current_site_name.replace(" ", "-").replace("/", "-").lower()
+            )
+            filename = f"site-{site_name_clean}-drone-surveyed-waypoints.json"
+
+            # Prepare survey data
+            survey_data = {
+                "id": survey_id,
+                "waypoints": [
+                    {
+                        "lat": wp.get("lat"),
+                        "lon": wp.get("lon"),
+                        "seq": wp.get("seq", i),
+                    }
+                    for i, wp in enumerate(drone.mission_waypoints.values())
+                ],
+                "vehicleId": str(drone.vehicle_id),
+                "completed_at": timestamp.isoformat(),
+                "mission_waypoint_id": self._survey_initiated_waypoint_id,
+                "scan_abandoned": survey_service.scan_abandoned,
+                "saved_at": timestamp.isoformat(),
+                "start_time": (
+                    self._survey_start_time.isoformat()
+                    if self._survey_start_time
+                    else None
+                ),
+                "end_time": (
+                    self._survey_end_time.isoformat() if self._survey_end_time else None
+                ),
+                "duration_seconds": duration_seconds,
+                "duration_formatted": duration_formatted,
+            }
+
+            # Load existing survey data if file exists
+            file_path = surveys_dir / filename
+            existing_surveys = []
+
+            if file_path.exists():
+                try:
+                    with open(file_path, "r") as f:
+                        existing_data = json.load(f)
+                        if isinstance(existing_data, list):
+                            existing_surveys = existing_data
+                        elif isinstance(existing_data, dict):
+                            existing_surveys = [existing_data]
+                except (json.JSONDecodeError, IOError) as e:
+                    print(f"Warning: Could not read existing file {filename}: {e}")
+                    existing_surveys = []
+
+            # Add new survey to array
+            existing_surveys.append(survey_data)
+
+            # Save updated array to file
+            with open(file_path, "w") as f:
+                json.dump(existing_surveys, f, indent=2)
+
+            print(f"Survey saved successfully: {filename}")
+            print(f"File path: {file_path.absolute()}")
+            print(f"Total surveys in file: {len(existing_surveys)}")
+            print(f"Drone waypoints: {len(survey_data['waypoints'])}")
+            print(f"Closest car waypoint: {closest_waypoint_id}")
+            print(f"Scan abandoned: {survey_service.scan_abandoned}")
+
+            return True
+
+        except Exception as e:
+            print(f"Error saving survey file: {e}")
+            return False
+
     async def execute_lawnmower_scan(
-        self,
-        center_waypoint: Dict,
-        heading: float,
-        car_vehicle_type: str = "car",
-        tolerance: float = 3.0,
-        timeout: int = 320,
-        max_car_distance: float = 20,
+            self,
+            center_waypoint: Dict,
+            heading: float,
+            car_vehicle_type: str = "car",
+            tolerance: float = 3.0,
+            timeout: int = CONFIG.survey.TIMEOUT_SECONDS,
+            max_car_distance: float = 20,
     ) -> bool:
         """Generates a lawnmower pattern and executes it in AUTO mode with car monitoring."""
         self.scan_abandoned = False  # Reset flag at start of scan
@@ -182,7 +295,6 @@ class SurveyService:
             )
 
         # Switch to AUTO mode to execute the mission
-        from backend.core.flight_modes import FlightMode
 
         if not drone_vehicle.set_mode(FlightMode.AUTO):
             print("Failed to set drone to AUTO mode.")
@@ -198,6 +310,7 @@ class SurveyService:
         # Monitor mission progress and car position
         print("Drone executing scan mission in AUTO mode...")
         scan_start_time = time.time()
+        scan_start_datetime = datetime.now()
         mission_complete = False
 
         # Store initial car position for monitoring
@@ -206,18 +319,20 @@ class SurveyService:
             initial_car_pos = await car_vehicle.position()
             if initial_car_pos:
                 print(
-                    f"🚗 Initial car position: {initial_car_pos['lat']:.6f}, {initial_car_pos['lon']:.6f}"
+                    f"Initial car position: {initial_car_pos['lat']:.6f}, {initial_car_pos['lon']:.6f}"
                 )
 
         while time.time() - scan_start_time < timeout:
             # Check if mission is complete
             if drone_vehicle.is_mission_complete():
-                print("✅ Lawnmower scan completed successfully!")
+                print("Lawnmower scan completed successfully!")
                 # Automatically switch back to GUIDED mode
-                print("🎮 Switching drone back to GUIDED mode...")
+                print("Switching drone back to GUIDED mode...")
                 drone_vehicle.set_mode(FlightMode.GUIDED)
                 mission_complete = True
+
                 break
+            scan_end_datetime = datetime.now()
 
             # Monitor car position if car_vehicle is provided
             if car_vehicle and initial_car_pos:
@@ -280,14 +395,15 @@ class SurveyService:
             return False
 
     async def execute_proximity_survey(
-        self,
-        center_waypoint: Dict,
-        max_distance_from_center: float = 400,
-        tolerance: float = 3.0,
-        timeout: int = 320,
+            self,
+            center_waypoint: Dict,
+            max_distance_from_center: float = 400,
+            tolerance: float = 3.0,
+            timeout: int = 320,
     ) -> bool:
         """Execute a proximity survey constrained to stay within max_distance_from_center."""
         self.scan_abandoned = False
+        survey_result = False
 
         # Get drone vehicle
         drone_vehicle = vehicle_service.get_vehicle("drone")
@@ -343,7 +459,7 @@ class SurveyService:
                 lon=return_home_position["longitude"],
                 # Use the drone's current altitude for the return trip
                 alt=return_home_position.get("relative_altitude")
-                or center_waypoint["alt"],
+                    or center_waypoint["alt"],
                 command=mavutil.mavlink.MAV_CMD_NAV_WAYPOINT,
                 param1=0,
                 param2=0,
@@ -362,8 +478,6 @@ class SurveyService:
         print("\n--- Executing Proximity Survey in AUTO Mode ---")
 
         # Switch to AUTO mode using existing set_mode method
-
-
         if not drone_vehicle.set_mode(FlightMode.AUTO):
             print("Failed to set drone to AUTO mode.")
             return False
@@ -373,50 +487,52 @@ class SurveyService:
             print("Failed to start drone mission.")
             return False
 
-        print("Drone executing proximity survey mission")
-
-        # Monitor mission progress
-        print("Drone executing proximity survey...")
-        scan_start_time = time.time()
-        mission_complete = False
-
-        while time.time() - scan_start_time < timeout:
-            # Check if mission is complete
-            if drone_vehicle.is_mission_complete():
-                print("Proximity survey completed successfully!")
-                # Automatically switch back to GUIDED mode
-                print("Switching drone back to GUIDED mode...")
-                # drone_vehicle.set_mode(FlightMode.GUIDED)
-                mission_complete = True
-
-                break
-            await asyncio.sleep(1)
-        if self.scan_abandoned:
-            print(f"\nPROXIMITY SURVEY ABANDONED!")
-            if not drone_vehicle.set_mode(FlightMode.GUIDED):
-                print("Failed to switch drone to GUIDED mode after abandon.")
-            return False
-        elif mission_complete:
-            print(
-                "🚁 Drone is returning to its starting position as per the mission plan."
-            )
-            print("🎮 Switching drone back to GUIDED mode to restore control.")
-            if not drone_vehicle.set_mode(FlightMode.GUIDED):
-                print("Failed to switch drone to GUIDED mode after survey completion.")
-                # Don't return False here, the survey itself was a success.
-            await asyncio.sleep(2)  # Give time for mode change to propagate
-            return True
-        else:
-            # Timeout occurred without completion
-            print("\n Proximity survey timed out!")
-            print("Switching drone back to GUIDED mode as a safety measure...")
-            if not drone_vehicle.set_mode(FlightMode.GUIDED):
-                print("Failed to switch drone back to GUIDED mode after timeout.")
-            await asyncio.sleep(2)
-            return False
+        # print("Drone executing proximity survey mission")
+        #
+        # # Monitor mission progress
+        # print("Drone executing proximity survey...")
+        # scan_start_time = time.time()
+        # scan_start_datetime = datetime.now()
+        # mission_complete = False
+        #
+        # while time.time() - scan_start_time < timeout:
+        #     # Check if mission is complete
+        #     if drone_vehicle.is_mission_complete():
+        #         print("Proximity survey completed successfully!")
+        #         mission_complete = True
+        #         break
+        #
+        #     await asyncio.sleep(1)
+        # scan_end_datetime = datetime.now()
+        # if self.scan_abandoned:
+        #     print(f"\nPROXIMITY SURVEY ABANDONED!")
+        #     survey_result = False
+        # elif mission_complete:
+        #     print(
+        #         "Drone is returning to its starting position as per the mission plan."
+        #     )
+        #     survey_result = True
+        # else:
+        #     # Timeout occurred without completion
+        #     print("\n Proximity survey timed out!")
+        #     survey_result = False
+        #
+        # print("Switching drone back to GUIDED mode as a safety measure...")
+        # if not drone_vehicle.set_mode(FlightMode.GUIDED):
+        #     print("Failed to switch drone back to GUIDED mode after timeout.")
+        # await asyncio.sleep(2)
+        #
+        # mission_waypoint_id=None
+        # survey_data = SurveyData(waypoints=scan_waypoints, start_time=scan_start_datetime,
+        #                          scan_abandoned=self.scan_abandoned, vehicleId=car_vehicle.vehicle_id,
+        #                          end_time=scan_end_datetime,
+        #                          mission_waypoint_id=mission_waypoint_id)
+        #
+        # self._save_completed_survey(drone_vehicle, car_vehicle)  # save mission in file
+        # return survey_result
 
     async def _generate_constrained_lawnmower_waypoints(
-        self, center_point: Dict, max_distance: float
+            self, center_point: Dict, max_distance: float
     ) -> List[Dict]:
         """Generate lawnmower pattern constrained within max_distance from center."""
         scan_waypoints = []

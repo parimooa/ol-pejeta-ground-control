@@ -637,7 +637,7 @@ class Vehicle:
         try:
             # First, clear any existing mission from the vehicle
             if not self.clear_mission():
-                print("❌ Failed to clear existing mission before upload.")
+                print("Failed to clear existing mission before upload.")
                 return False
 
             # Reset the survey completion flag for the new mission.
@@ -658,7 +658,7 @@ class Vehicle:
                     break
 
             print(
-                f"ℹ️ Mission completion will be triggered after reaching waypoint sequence: {self.last_waypoint_seq}"
+                f"Mission completion will be triggered after reaching waypoint sequence: {self.last_waypoint_seq}"
             )
 
             # Send the total number of waypoints to the vehicle
@@ -679,7 +679,7 @@ class Vehicle:
                     if msg and msg.seq == i:
                         break  # Vehicle is ready for this waypoint
                 else:
-                    print(f"❌ Timeout waiting for vehicle to request waypoint {i}")
+                    print(f"Timeout waiting for vehicle to request waypoint {i}")
                     return False
 
                 # Send the waypoint details
@@ -712,15 +712,15 @@ class Vehicle:
                 )
                 if msg:
                     if msg.type == mavutil.mavlink.MAV_MISSION_ACCEPTED:
-                        print("✅ Mission uploaded successfully")
+                        print("Mission uploaded successfully")
                         # Refresh the local copy of the mission from the vehicle
                         self.fetch_mission_waypoints()
                         return True
                     else:
-                        print(f"❌ Mission upload failed with error code: {msg.type}")
+                        print(f"Mission upload failed with error code: {msg.type}")
                         return False
 
-            print("⚠️ Mission upload acknowledgment timeout")
+            print("Mission upload acknowledgment timeout")
             return False
 
         except Exception as e:
@@ -924,10 +924,10 @@ class Vehicle:
             )
             if success:
                 print(
-                    f"💾 Waypoint {waypoint_seq} saved to disk for site {self.current_site_name}"
+                    f"Waypoint {waypoint_seq} saved to disk for site {self.current_site_name}"
                 )
             else:
-                print(f"⚠️ Failed to save waypoint {waypoint_seq} to disk")
+                print(f"Failed to save waypoint {waypoint_seq} to disk")
         except Exception as e:
             print(f"Error saving waypoint {waypoint_seq}: {e}")
 

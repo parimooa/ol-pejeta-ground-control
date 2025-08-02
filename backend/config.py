@@ -112,6 +112,7 @@ class SurveyConstants:
     LOITER_RADIUS_STANDARD: float = 15.0  # meters
     LOITER_RADIUS_PROXIMITY: float = 20.0  # meters
     PROGRESS_UPDATE_INTERVAL: int = 10  # seconds
+    TIMEOUT_SECONDS: int = 320 #
 
 
 @dataclass(frozen=True)

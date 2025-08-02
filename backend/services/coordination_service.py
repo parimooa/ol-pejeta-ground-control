@@ -7,10 +7,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from backend.api.websockets.telemetry import telemetry_manager
+from backend.config import CONFIG
 from backend.core.flight_modes import FlightMode
+from backend.schemas.survey import SurveyData
 from backend.services.survey_service import survey_service
 from backend.services.vehicle_service import vehicle_service
-from backend.config import CONFIG
 
 try:
     from settings import site_name as configured_site_name
@@ -60,8 +61,8 @@ class CoordinationService:
         dlat = lat2_rad - lat1_rad
         dlon = lon2_rad - lon1_rad
         a = (
-            math.sin(dlat / 2) ** 2
-            + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2) ** 2
+                math.sin(dlat / 2) ** 2
+                + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2) ** 2
         )
         c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
         return R * c
@@ -98,24 +99,6 @@ class CoordinationService:
             timestamp = datetime.now()
             survey_id = f"survey_{drone.vehicle_id}_{int(timestamp.timestamp())}"
 
-            duration_seconds = None
-            duration_formatted = None
-
-            if self._survey_start_time and self._survey_end_time:
-                duration_seconds = (
-                    self._survey_end_time - self._survey_start_time
-                ).total_seconds()
-
-                # Format duration as HH:MM:SS
-                hours = int(duration_seconds // 3600)
-                minutes = int((duration_seconds % 3600) // 60)
-                seconds = int(duration_seconds % 60)
-                duration_formatted = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-
-                print(
-                    f"Survey duration: {duration_formatted} ({duration_seconds:.1f} seconds)"
-                )
-
             # Get car position for the closest waypoint calculation
             car_position = car.position()
             car_waypoints = car.mission_waypoints
@@ -129,33 +112,26 @@ class CoordinationService:
             )
             filename = f"site-{site_name_clean}-drone-surveyed-waypoints.json"
 
-            # Prepare survey data
-            survey_data = {
-                "id": survey_id,
-                "waypoints": [
-                    {
-                        "lat": wp.get("lat"),
-                        "lon": wp.get("lon"),
-                        "seq": wp.get("seq", i),
-                    }
-                    for i, wp in enumerate(drone.mission_waypoints.values())
-                ],
-                "vehicleId": str(drone.vehicle_id),
-                "completedAt": timestamp.isoformat(),
-                "mission_waypoint_id": self._survey_initiated_waypoint_id,
-                "scan_abandoned": survey_service.scan_abandoned,
-                "savedAt": timestamp.isoformat(),
-                "startTime": (
+            survey_data = SurveyData(
+                id=survey_id,
+                waypoints=list(drone.mission_waypoints.values()),
+                vehicleId=str(drone.vehicle_id),
+                completed_at=timestamp.isoformat(),
+                mission_waypoint_id=self._survey_initiated_waypoint_id,
+                scan_abandoned=survey_service.scan_abandoned,
+                saved_at=timestamp.isoformat(),
+                start_time=(
                     self._survey_start_time.isoformat()
                     if self._survey_start_time
                     else None
                 ),
-                "endTime": (
+                end_time=(
                     self._survey_end_time.isoformat() if self._survey_end_time else None
                 ),
-                "durationSeconds": duration_seconds,
-                "durationFormatted": duration_formatted,
-            }
+            )
+
+            # Convert the validated model to a dictionary for JSON storage.
+            survey_data_to_save = survey_data.model_dump(exclude_none=True)
 
             # Load existing survey data if file exists
             file_path = surveys_dir / filename
@@ -174,7 +150,7 @@ class CoordinationService:
                     existing_surveys = []
 
             # Add new survey to array
-            existing_surveys.append(survey_data)
+            existing_surveys.append(survey_data_to_save)
 
             # Save updated array to file
             with open(file_path, "w") as f:
@@ -183,14 +159,16 @@ class CoordinationService:
             print(f"Survey saved successfully: {filename}")
             print(f"File path: {file_path.absolute()}")
             print(f"Total surveys in file: {len(existing_surveys)}")
-            print(f"Drone waypoints: {len(survey_data['waypoints'])}")
+            print(f"Drone waypoints: {len(survey_data.waypoints)}")
             print(f"Closest car waypoint: {closest_waypoint_id}")
-            print(f"Scan abandoned: {survey_service.scan_abandoned}")
+            print(f"Scan abandoned: {survey_data.scan_abandoned}")
 
             return True
 
         except Exception as e:
+            import traceback
             print(f"Error saving survey file: {e}")
+            traceback.print_exc()
             return False
 
     def _is_drone_surveying(self, drone: "Vehicle") -> bool:
@@ -216,9 +194,9 @@ class CoordinationService:
 
         # Determine if survey button should be enabled
         should_enable = (
-            self.proximity_threshold >= distance > 0
-            and not self._survey_mode_detected
-            and self._is_following
+                self.proximity_threshold >= distance > 0
+                and not self._survey_mode_detected
+                and self._is_following
         )
 
         # Only broadcast if state changed
@@ -271,7 +249,7 @@ class CoordinationService:
                     }
                 )
 
-            # Check for survey completion (transition from surveying to not surveying)
+            # Check for survey completion
             if self._last_survey_mode_state and not is_surveying:
                 self._survey_end_time = datetime.now()
                 print("Survey completed - drone switched back to GUIDED mode")
@@ -513,11 +491,11 @@ class CoordinationService:
         # Mark that we initiated this survey
         self._survey_initiated_by_user = True
 
-        # Execute  survey with a constrained pattern
+        # Execute survey with a constrained pattern
         success = await survey_service.execute_proximity_survey(
             survey_center,
             max_distance_from_center=self.max_distance
-            * 0.8,  # 80% of max distance for safety
+                                     * 0.8,  # 80% of max distance for safety
         )
 
         # Clear the flag when survey completes

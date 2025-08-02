@@ -2,11 +2,12 @@ import json
 import os
 from pathlib import Path
 from typing import List, Optional, Dict, Any
+from backend.config import CONFIG
 
 
 class WaypointFileService:
     def __init__(self):
-        self.surveyed_area_dir = Path("surveyed_area")
+        self.surveyed_area_dir = Path(CONFIG.directories.SURVEYED_AREA)
         self.surveyed_area_dir.mkdir(exist_ok=True)
 
     @staticmethod

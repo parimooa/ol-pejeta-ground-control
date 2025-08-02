@@ -10,11 +10,12 @@ from backend.api.websockets.telemetry import telemetry_manager
 from backend.core.flight_modes import FlightMode
 from backend.services.survey_service import survey_service
 from backend.services.vehicle_service import vehicle_service
+from backend.config import CONFIG
 
 try:
     from settings import site_name as configured_site_name
 except ImportError:
-    configured_site_name = "ol-pejeta"  # Default fallback
+    configured_site_name = CONFIG.site.DEFAULT_SITE_NAME
 
 
 class CoordinationService:
@@ -26,13 +27,13 @@ class CoordinationService:
         self._stop_event = threading.Event()
         self._is_active = False
         self._is_following = False
-        self.max_distance = 500  # meters
-        self.follow_altitude = 30  # meters AGL
+        self.max_distance = CONFIG.coordination.MAX_FOLLOW_DISTANCE
+        self.follow_altitude = CONFIG.coordination.FOLLOW_ALTITUDE
         self._survey_mode_detected = False
-        self.proximity_threshold = 5  # meters for survey suggestion
+        self.proximity_threshold = CONFIG.coordination.PROXIMITY_THRESHOLD
         self._survey_button_enabled = False
         self._last_proximity_check = 0
-        self._proximity_check_cooldown = 2  # seconds
+        self._proximity_check_cooldown = CONFIG.coordination.PROXIMITY_CHECK_COOLDOWN
         self._last_survey_mode_state = False  # Track previous survey state
         self._survey_initiated_by_user = (
             False  # Track if we initiated the current survey
@@ -50,7 +51,7 @@ class CoordinationService:
         if not pos1.get("latitude") or not pos2.get("latitude"):
             return -1
 
-        R = 6371000  # Earth radius in meters
+        R = CONFIG.physical.EARTH_RADIUS_METERS
         lat1_rad = math.radians(pos1["latitude"])
         lon1_rad = math.radians(pos1["longitude"])
         lat2_rad = math.radians(pos2["latitude"])
@@ -59,8 +60,8 @@ class CoordinationService:
         dlat = lat2_rad - lat1_rad
         dlon = lon2_rad - lon1_rad
         a = (
-                math.sin(dlat / 2) ** 2
-                + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2) ** 2
+            math.sin(dlat / 2) ** 2
+            + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2) ** 2
         )
         c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
         return R * c
@@ -90,7 +91,7 @@ class CoordinationService:
         """Save completed survey data to JSON file."""
         try:
             # Ensure surveys directory exists
-            surveys_dir = Path("surveyed_area")
+            surveys_dir = Path(CONFIG.directories.SURVEYED_AREA)
             surveys_dir.mkdir(exist_ok=True)
 
             # Get current timestamp
@@ -101,7 +102,9 @@ class CoordinationService:
             duration_formatted = None
 
             if self._survey_start_time and self._survey_end_time:
-                duration_seconds = (self._survey_end_time - self._survey_start_time).total_seconds()
+                duration_seconds = (
+                    self._survey_end_time - self._survey_start_time
+                ).total_seconds()
 
                 # Format duration as HH:MM:SS
                 hours = int(duration_seconds // 3600)
@@ -109,7 +112,9 @@ class CoordinationService:
                 seconds = int(duration_seconds % 60)
                 duration_formatted = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
-                print(f"Survey duration: {duration_formatted} ({duration_seconds:.1f} seconds)")
+                print(
+                    f"Survey duration: {duration_formatted} ({duration_seconds:.1f} seconds)"
+                )
 
             # Get car position for the closest waypoint calculation
             car_position = car.position()
@@ -140,10 +145,16 @@ class CoordinationService:
                 "mission_waypoint_id": self._survey_initiated_waypoint_id,
                 "scan_abandoned": survey_service.scan_abandoned,
                 "savedAt": timestamp.isoformat(),
-                "startTime": self._survey_start_time.isoformat() if self._survey_start_time else None,
-                "endTime": self._survey_end_time.isoformat() if self._survey_end_time else None,
+                "startTime": (
+                    self._survey_start_time.isoformat()
+                    if self._survey_start_time
+                    else None
+                ),
+                "endTime": (
+                    self._survey_end_time.isoformat() if self._survey_end_time else None
+                ),
                 "durationSeconds": duration_seconds,
-                "durationFormatted": duration_formatted
+                "durationFormatted": duration_formatted,
             }
 
             # Load existing survey data if file exists
@@ -205,9 +216,9 @@ class CoordinationService:
 
         # Determine if survey button should be enabled
         should_enable = (
-                self.proximity_threshold >= distance > 0
-                and not self._survey_mode_detected
-                and self._is_following
+            self.proximity_threshold >= distance > 0
+            and not self._survey_mode_detected
+            and self._is_following
         )
 
         # Only broadcast if state changed
@@ -256,7 +267,7 @@ class CoordinationService:
                     {
                         "event": "survey_started",
                         "start_time": self._survey_start_time.isoformat(),
-                        "message": "Survey mission started"
+                        "message": "Survey mission started",
                     }
                 )
 
@@ -367,7 +378,7 @@ class CoordinationService:
                             }
                         )
 
-            time.sleep(2)  # Loop runs every 2 seconds
+            time.sleep(CONFIG.coordination.LOOP_INTERVAL)
 
         print("Coordination loop stopped.")
         self._is_active = False
@@ -506,7 +517,7 @@ class CoordinationService:
         success = await survey_service.execute_proximity_survey(
             survey_center,
             max_distance_from_center=self.max_distance
-                                     * 0.8,  # 80% of max distance for safety
+            * 0.8,  # 80% of max distance for safety
         )
 
         # Clear the flag when survey completes

@@ -71,31 +71,31 @@ async def shutdown_event():
     print("Drone Control API is shutting down...")
 
 
-@app.get("/debug/set-event-loop")
-async def debug_set_event_loop():
-    """Debug endpoint to manually set the event loop"""
-    loop = asyncio.get_running_loop()
+# @app.get("/debug/set-event-loop")
+# async def debug_set_event_loop():
+#     """Debug endpoint to manually set the event loop"""
+#     loop = asyncio.get_running_loop()
+#
+#     # Set it in the telemetry manager
+#     telemetry_manager.set_event_loop(loop)
+#
+#     return {
+#         "message": "Event loop set manually",
+#         "loop": str(loop),
+#         "pending_telemetry_count": len(telemetry_manager._pending_telemetry),
+#         "loop_is_set": telemetry_manager.loop is not None,
+#     }
 
-    # Set it in the telemetry manager
-    telemetry_manager.set_event_loop(loop)
 
-    return {
-        "message": "Event loop set manually",
-        "loop": str(loop),
-        "pending_telemetry_count": len(telemetry_manager._pending_telemetry),
-        "loop_is_set": telemetry_manager.loop is not None,
-    }
-
-
-@app.get("/debug/telemetry-status")
-async def debug_telemetry_status():
-    """Debug endpoint to check telemetry status"""
-    return {
-        "loop_is_set": telemetry_manager.loop is not None,
-        "pending_telemetry_count": len(telemetry_manager._pending_telemetry),
-        "active_connections": len(telemetry_manager.active_connections),
-        "loop_set_event": telemetry_manager._loop_set.is_set(),
-    }
+# @app.get("/debug/telemetry-status")
+# async def debug_telemetry_status():
+#     """Debug endpoint to check telemetry status"""
+#     return {
+#         "loop_is_set": telemetry_manager.loop is not None,
+#         "pending_telemetry_count": len(telemetry_manager._pending_telemetry),
+#         "active_connections": len(telemetry_manager.active_connections),
+#         "loop_set_event": telemetry_manager._loop_set.is_set(),
+#     }
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from typing import Optional
+from backend.config import CONFIG
 
 
 class Waypoint(BaseModel):
@@ -7,11 +8,11 @@ class Waypoint(BaseModel):
     lat: float
     lon: float
     alt: float
-    command: int = 16  # MAV_CMD_NAV_WAYPOINT
-    param1: float = 0
-    param2: float = 0
-    param3: float = 0
-    param4: float = 0
+    command: int = CONFIG.mavlink.NAV_WAYPOINT_COMMAND
+    param1: float = CONFIG.mavlink.PARAM1
+    param2: float = CONFIG.mavlink.PARAM2
+    param3: float = CONFIG.mavlink.PARAM3
+    param4: float = CONFIG.mavlink.PARAM4
     autocontinue: bool = True
     current: bool = False
 

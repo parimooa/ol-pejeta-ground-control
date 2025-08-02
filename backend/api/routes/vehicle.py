@@ -1,20 +1,19 @@
 import os
+import tempfile
+from typing import Dict, Any
 
 from fastapi import (
     APIRouter,
     HTTPException,
     WebSocket,
     WebSocketDisconnect,
-    Depends,
     UploadFile,
     File,
 )
-from typing import Dict, Any, List
-import tempfile
 
-from backend.services.vehicle_service import vehicle_service
 from backend.api.websockets.telemetry import telemetry_manager
 from backend.schemas.telemetry import TelemetryData
+from backend.services.vehicle_service import vehicle_service
 from backend.services.waypoint_file_service import waypoint_file_service
 
 router = APIRouter(prefix="/vehicles", tags=["vehicles"])
@@ -187,8 +186,6 @@ async def get_mission_progress(vehicle_type: str):
 
     # Get progress from file if vehicle is car type
     if vehicle_type == "car" and vehicle.current_site_name:
-        from backend.services.waypoint_file_service import waypoint_file_service
-
         progress = waypoint_file_service.get_waypoint_progress(
             vehicle.current_site_name, str(vehicle.vehicle_id)
         )

@@ -8,7 +8,7 @@ from pydantic import ValidationError
 
 from backend.services.vehicle_service import vehicle_service
 from backend.schemas.telemetry import TelemetryData
-from backend.config import WEBSOCKET_PING_INTERVAL
+from backend.config import CONFIG
 
 
 class TelemetryWebsocketManager:
@@ -212,7 +212,7 @@ class TelemetryWebsocketManager:
         """Send periodic pings to keep the connection alive."""
         try:
             while True:
-                await asyncio.sleep(WEBSOCKET_PING_INTERVAL)
+                await asyncio.sleep(CONFIG.network.PING_INTERVAL_SECONDS)
                 try:
                     await websocket.send_text(json.dumps({"type": "ping"}))
                 except Exception:

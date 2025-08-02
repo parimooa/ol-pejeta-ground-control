@@ -7,6 +7,7 @@ from pymavlink import mavutil, mavwp
 
 from backend.core.flight_modes import FlightMode
 from backend.services.waypoint_file_service import waypoint_file_service
+from backend.config import CONFIG
 
 
 class Vehicle:
@@ -42,8 +43,8 @@ class Vehicle:
         self.current_waypoint_seq = None
         self.next_waypoint_seq = None
         self.last_waypoint_reach_time = None
-        self.waypoint_visit_threshold = 3.0  # meters
-        self.waypoint_confirmation_delay = 2.0  # seconds
+        self.waypoint_visit_threshold = CONFIG.vehicle.WAYPOINT_VISIT_THRESHOLD
+        self.waypoint_confirmation_delay = CONFIG.vehicle.WAYPOINT_CONFIRMATION_DELAY
         self._survey_mission_complete = False
         self.last_waypoint_seq = -1
         self.current_site_name = None  # Site name for waypoint persistence
@@ -137,11 +138,11 @@ class Vehicle:
             f"Connecting to vehicle on: {self.vehicle_type} at {self.connection_string}"
         )
         self.vehicle = mavutil.mavlink_connection(
-            self.connection_string, source_system=255
+            self.connection_string, source_system=CONFIG.network.MAVLINK_SOURCE_SYSTEM
         )
 
         print("Waiting for heartbeat...")
-        heartbeat_msg = self.vehicle.wait_heartbeat(timeout=10)
+        heartbeat_msg = self.vehicle.wait_heartbeat(timeout=CONFIG.timeouts.HEARTBEAT)
         if heartbeat_msg:
             print(
                 f"Connected to system {self.vehicle.target_system} component {self.vehicle.target_component}"
@@ -206,7 +207,7 @@ class Vehicle:
     def _message_listener_loop(self):
         """Dedicated thread to listen for heartbeats and update state."""
         # Request data streams once at the beginning
-        stream_rate_hz = 4  # A reasonable rate
+        stream_rate_hz = CONFIG.vehicle.TELEMETRY_STREAM_RATE
         self.vehicle.mav.request_data_stream_send(
             self.vehicle.target_system,
             self.vehicle.target_component,
@@ -220,7 +221,7 @@ class Vehicle:
             self.vehicle.target_system,
             self.vehicle.target_component,
             mavutil.mavlink.MAV_DATA_STREAM_EXTENDED_STATUS,
-            2,  # 2 Hz rate for mission status
+            CONFIG.vehicle.EXTENDED_STATUS_RATE,
             1,  # Start stream
         )
 
@@ -373,7 +374,7 @@ class Vehicle:
 
         # Wait for confirmation
         start_time = time.time()
-        timeout_duration = 15
+        timeout_duration = CONFIG.timeouts.MODE_CHANGE
         while time.time() - start_time < timeout_duration:
             with self._lock:
                 current_mode = self.last_telemetry.get("custom_mode")
@@ -478,7 +479,7 @@ class Vehicle:
 
         # Wait for arming confirmation
         start_time = time.time()
-        while time.time() - start_time < 10:  # 10-second timeout
+        while time.time() - start_time < CONFIG.timeouts.ARM:
             with self._lock:
                 if self.last_telemetry.get("armed"):
                     print("Vehicle is ARMED.")
@@ -516,7 +517,7 @@ class Vehicle:
 
         # Wait for disarming confirmation
         start_time = time.time()
-        while time.time() - start_time < 5:  # 5-second timeout
+        while time.time() - start_time < CONFIG.timeouts.DISARM:
             with self._lock:
                 if not self.last_telemetry.get("armed"):
                     print("Vehicle is DISARMED.")
@@ -549,7 +550,7 @@ class Vehicle:
 
         # Wait for vehicle to reach altitude
         start_time = time.time()
-        timeout_duration = 30  # Generous timeout for takeoff
+        timeout_duration = CONFIG.timeouts.TAKEOFF
         while time.time() - start_time < timeout_duration:
             with self._lock:
                 current_alt = self.last_telemetry.get("relative_altitude")

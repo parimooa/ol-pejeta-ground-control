@@ -5,16 +5,10 @@ from typing import Dict, List, Optional, Tuple
 from pymavlink import mavutil
 from ..models.waypoint import Waypoint
 from .vehicle_service import vehicle_service
+from ..config import CONFIG
 
 # Global scan abandon flag
 scan_abandoned = False
-
-# Lawnmower Pattern Configuration
-SWATH_WIDTH = 5  # 50 Spacing between scan lines in meters
-PATTERN_LENGTH = 40  # 1000  # Length of each lawnmower stripe in meters
-MAX_RADIUS = (
-    20  # 500  # The pattern will be a rectangle of PATTERN_LENGTH x (2 * MAX_RADIUS)
-)
 
 
 class SurveyService:
@@ -28,7 +22,7 @@ class SurveyService:
     @staticmethod
     async def calculate_distance(pos1: Dict, pos2: Dict) -> float:
         """Calculate distance between two GPS coordinates using Haversine formula."""
-        R = 6371000  # Earth radius in meters
+        R = CONFIG.physical.EARTH_RADIUS_METERS
         lat1_rad, lat2_rad = math.radians(pos1["lat"]), math.radians(pos2["lat"])
         dlat = math.radians(pos2["lat"] - pos1["lat"])
         dlon = math.radians(pos2["lon"] - pos1["lon"])
@@ -85,11 +79,14 @@ class SurveyService:
         scan_waypoints = []
         # The angle for the pattern lines should be perpendicular to the vehicle's heading
         pattern_angle_rad = math.radians((heading_deg + 90) % 360)
-        num_stripes = int((MAX_RADIUS * 2) / SWATH_WIDTH)
+        num_stripes = int((CONFIG.survey.MAX_RADIUS * 2) / CONFIG.survey.SWATH_WIDTH)
 
         for i in range(num_stripes + 1):
-            y_offset = -MAX_RADIUS + (i * SWATH_WIDTH)
-            x_start, x_end = -PATTERN_LENGTH / 2, PATTERN_LENGTH / 2
+            y_offset = -CONFIG.survey.MAX_RADIUS + (i * CONFIG.survey.SWATH_WIDTH)
+            x_start, x_end = (
+                -CONFIG.survey.PATTERN_LENGTH / 2,
+                CONFIG.survey.PATTERN_LENGTH / 2,
+            )
             if i % 2 != 0:
                 x_start, x_end = x_end, x_start
 
@@ -156,7 +153,7 @@ class SurveyService:
             )
 
         # Add unlimited loiter waypoint at the end of the scan
-        loiter_radius = 15.0  # 15 meter loiter radius
+        loiter_radius = CONFIG.survey.LOITER_RADIUS_STANDARD
         waypoint_objects.append(
             Waypoint(
                 seq=len(scan_waypoints),
@@ -246,7 +243,7 @@ class SurveyService:
                     else:
                         # Show car monitoring status occasionally
                         elapsed_time = int(time.time() - scan_start_time)
-                        if elapsed_time % 10 == 0:  # Every 10 seconds
+                        if elapsed_time % CONFIG.survey.PROGRESS_UPDATE_INTERVAL == 0:
                             print(
                                 f"\r🔄 Scanning... Car distance: {car_movement_distance:.1f}m/{max_car_distance}m | Time: {elapsed_time}s",
                                 end="",
@@ -338,7 +335,7 @@ class SurveyService:
             )
 
         # Add unlimited loiter waypoint at the end of the proximity survey
-        loiter_radius = 20.0  # 20 meter loiter radius for proximity survey
+        loiter_radius = CONFIG.survey.LOITER_RADIUS_PROXIMITY
         waypoint_objects.append(
             Waypoint(
                 seq=len(scan_waypoints),
@@ -405,9 +402,7 @@ class SurveyService:
             )
             print("🎮 Switching drone back to GUIDED mode to restore control.")
             if not drone_vehicle.set_mode(FlightMode.GUIDED):
-                print(
-                    "Failed to switch drone to GUIDED mode after survey completion."
-                )
+                print("Failed to switch drone to GUIDED mode after survey completion.")
                 # Don't return False here, the survey itself was a success.
             await asyncio.sleep(2)  # Give time for mode change to propagate
             return True
@@ -420,7 +415,6 @@ class SurveyService:
             await asyncio.sleep(2)
             return False
 
-
     async def _generate_constrained_lawnmower_waypoints(
         self, center_point: Dict, max_distance: float
     ) -> List[Dict]:
@@ -432,9 +426,9 @@ class SurveyService:
         safe_radius = max_distance * 0.4  # Half the distance for radius
 
         # Adjust pattern size based on constraint
-        pattern_length = min(PATTERN_LENGTH, safe_radius * 1.5)
-        pattern_width = min(MAX_RADIUS * 2, safe_radius * 1.5)
-        swath_width = SWATH_WIDTH
+        pattern_length = min(CONFIG.survey.PATTERN_LENGTH, safe_radius * 1.5)
+        pattern_width = min(CONFIG.survey.MAX_RADIUS * 2, safe_radius * 1.5)
+        swath_width = CONFIG.survey.SWATH_WIDTH
 
         print(
             f"Constrained pattern: {pattern_length}m x {pattern_width}m (max distance: {max_distance}m)"

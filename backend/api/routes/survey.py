@@ -9,9 +9,10 @@ from ...models.waypoint import Waypoint
 from ...schemas.survey import SaveSurveyRequest, DeleteSurveyRequest
 from ...services.survey_service import survey_service
 from ...services.vehicle_service import vehicle_service
+from ...config import CONFIG
 
 # Survey storage configuration
-SURVEYS_DIR = Path("surveyed_area")
+SURVEYS_DIR = Path(CONFIG.directories.SURVEYED_AREA)
 SURVEYS_DIR.mkdir(exist_ok=True)
 
 router = APIRouter(prefix="/survey", tags=["survey"])

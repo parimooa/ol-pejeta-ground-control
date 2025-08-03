@@ -158,24 +158,19 @@ class Vehicle:
             mavutil.mavlink.MAV_SEVERITY_NOTICE,
             "Connected to drone control system".encode(),
         )
-
         # Reset the stop flag if it was set
         self._stop_threads.clear()
-
         # Fetch mission waypoints synchronously BEFORE starting the listener thread.
         self.fetch_mission_waypoints()
-
-        # --- Start of Change ---
         # Set the initial current and next waypoints now that the mission is loaded.
         self._update_current_next_waypoints()
-        # --- End of Change ---
 
         # Start heartbeat thread
         self._heartbeat_thread = threading.Thread(target=self._heartbeat_loop)
         self._heartbeat_thread.daemon = True
         self._heartbeat_thread.start()
 
-        # Now, start the central message listener for continuous telemetry
+
         self._message_listener_thread = threading.Thread(
             target=self._message_listener_loop
         )

@@ -214,7 +214,7 @@ const timelineItems = computed(() => {
           dotColor: hasAbandoned ? 'error' : 'success'
         };
       } else {
-        // This is a pending/unvisited waypoint.
+
         return {
           ...wp,
           type: 'pending',
@@ -228,8 +228,6 @@ const totalWaypoints = computed(() => timelineItems.value.length);
 const surveyedCount = computed(() => {
   return timelineItems.value.filter(item => item.type === 'surveyed').length;
 });
-
-// --- END: New Computed Properties ---
 
 onMounted(() => {
   loadSurveyLogs() // Initial load

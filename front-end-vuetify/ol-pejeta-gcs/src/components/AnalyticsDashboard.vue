@@ -4,7 +4,7 @@
     <v-row align="center" class="mb-4">
       <v-col>
         <h1 class="text-h4 font-weight-bold">Analytics Dashboard</h1>
-        <p class="text-medium-emphasis">Real-time system performance and mission analysis</p>
+        <p class="text-medium-emphasis">Real-time system performance and mission analysis.</p>
       </v-col>
       <v-col class="text-right">
         <v-btn :loading="loading" color="primary" prepend-icon="mdi-refresh" @click="fetchDashboardData">
@@ -27,13 +27,13 @@
 
     <!-- Main Dashboard Content -->
     <div v-if="!loading && !error && dashboardData">
-      <!-- KPI Cards -->
+      <!-- START: KPI Cards with new colors -->
       <v-row>
         <v-col cols="12" sm="6" md="3">
           <v-card class="fill-height" elevation="4">
             <v-card-item>
               <template #prepend>
-                <v-icon color="primary" icon="mdi-chart-timeline-variant" size="x-large"></v-icon>
+                <v-icon color="blue-grey-darken-1" icon="mdi-chart-timeline-variant" size="x-large"></v-icon>
               </template>
               <v-card-title class="text-h5 font-weight-bold">
                 {{ dashboardData.coordination_stats_24h.total_events || 0 }}
@@ -46,7 +46,7 @@
           <v-card class="fill-height" elevation="4">
             <v-card-item>
               <template #prepend>
-                <v-icon color="success" icon="mdi-check-decagram-outline" size="x-large"></v-icon>
+                <v-icon color="teal" icon="mdi-check-decagram-outline" size="x-large"></v-icon>
               </template>
               <v-card-title class="text-h5 font-weight-bold">
                 {{ dashboardData.coordination_stats_24h.survey_success_rate || 0 }}%
@@ -59,7 +59,7 @@
           <v-card class="fill-height" elevation="4">
             <v-card-item>
               <template #prepend>
-                <v-icon color="info" icon="mdi-timer-sand" size="x-large"></v-icon>
+                <v-icon color="light-blue" icon="mdi-timer-sand" size="x-large"></v-icon>
               </template>
               <v-card-title class="text-h5 font-weight-bold">
                 {{ dashboardData.coordination_stats_24h.avg_survey_duration_seconds || 0 }}s
@@ -72,7 +72,7 @@
           <v-card class="fill-height" elevation="4">
             <v-card-item>
               <template #prepend>
-                <v-icon color="purple" icon="mdi-lan" size="x-large"></v-icon>
+                <v-icon color="deep-purple-accent-2" icon="mdi-lan" size="x-large"></v-icon>
               </template>
               <v-card-title class="text-h5 font-weight-bold">
                 {{ dashboardData.performance_summary_24h.avg_api_response_time_ms || 0 }}ms
@@ -82,6 +82,7 @@
           </v-card>
         </v-col>
       </v-row>
+      <!-- END: KPI Cards with new colors -->
 
       <!-- Charts and Recent Events -->
       <v-row>
@@ -178,13 +179,28 @@ const formatDateTime = (isoString) => {
   });
 };
 
+
+const eventColorMap = {
+  complete: 'teal',
+  start: 'blue',
+  abandon: 'amber-darken-2',
+  stop: 'orange-darken-2',
+  fault: 'red-darken-2',
+  follow: 'deep-purple-lighten-1',
+  coordination: 'cyan-darken-1',
+  default: 'grey-darken-1'
+};
+
 const getEventColor = (eventType) => {
-  if (eventType.includes('complete')) return 'success';
-  if (eventType.includes('start')) return 'primary';
-  if (eventType.includes('abandon')) return 'warning';
-  if (eventType.includes('fault')) return 'error';
-  if (eventType.includes('stop')) return 'orange';
-  return 'grey';
+  const lowerType = eventType.toLowerCase();
+  if (lowerType.includes('complete')) return eventColorMap.complete;
+  if (lowerType.includes('start')) return eventColorMap.start;
+  if (lowerType.includes('abandon')) return eventColorMap.abandon;
+  if (lowerType.includes('stop')) return eventColorMap.stop;
+  if (lowerType.includes('fault')) return eventColorMap.fault;
+  if (lowerType.includes('follow')) return eventColorMap.follow;
+  if (lowerType.includes('coordination')) return eventColorMap.coordination;
+  return eventColorMap.default;
 };
 
 const getEventIcon = (eventType) => {
@@ -211,13 +227,16 @@ const chartData = computed(() => {
         label: 'Event Count',
         backgroundColor: [],
         data: [],
+        borderRadius: 4,
       },
     ],
   };
 
   if (dashboardData.value?.recent_events) {
     const eventCounts = {};
-    for (const event of dashboardData.value.recent_events) {
+
+    const recentEvents = [...dashboardData.value.recent_events].reverse();
+    for (const event of recentEvents) {
       const type = capitalize(event.event_type.replace(/_/g, ' '));
       eventCounts[type] = (eventCounts[type] || 0) + 1;
     }
@@ -225,6 +244,7 @@ const chartData = computed(() => {
     for (const [label, count] of Object.entries(eventCounts)) {
       data.labels.push(label);
       data.datasets[0].data.push(count);
+      // The chart will now use the new, more vibrant colors
       data.datasets[0].backgroundColor.push(getEventColor(label.toLowerCase()));
     }
   }
@@ -248,7 +268,7 @@ const chartOptions = {
     },
   },
 };
-// --- End Chart Logic ---
+
 
 onMounted(() => {
   fetchDashboardData();

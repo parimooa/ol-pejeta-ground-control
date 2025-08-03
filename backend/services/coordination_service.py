@@ -12,6 +12,7 @@ from backend.core.flight_modes import FlightMode
 from backend.schemas.survey import SurveyData
 from backend.services.survey_service import survey_service
 from backend.services.vehicle_service import vehicle_service
+from backend.services.analytics_service import analytics_service
 
 try:
     from settings import site_name as configured_site_name
@@ -242,6 +243,16 @@ class CoordinationService:
             if is_surveying and not self._last_survey_mode_state:
                 self._survey_start_time = datetime.now()
                 print(f"Survey started at: {self._survey_start_time.isoformat()}")
+                
+                # Track analytics event
+                analytics_service.track_coordination_event(
+                    event_type="survey_start",
+                    distance=distance,
+                    drone_pos=drone_pos,
+                    car_pos=car_pos,
+                    metadata={"start_time": self._survey_start_time.isoformat()}
+                )
+                
                 telemetry_manager.broadcast_event(
                     {
                         "event": "survey_started",
@@ -254,6 +265,24 @@ class CoordinationService:
             if self._last_survey_mode_state and not is_surveying:
                 self._survey_end_time = datetime.now()
                 print("Survey completed - drone switched back to GUIDED mode")
+
+                # Calculate survey duration
+                duration_seconds = None
+                if self._survey_start_time:
+                    duration_seconds = (self._survey_end_time - self._survey_start_time).total_seconds()
+
+                # Track analytics event for survey completion
+                analytics_service.track_coordination_event(
+                    event_type="survey_complete",
+                    distance=distance,
+                    drone_pos=drone_pos,
+                    car_pos=car_pos,
+                    duration_seconds=duration_seconds,
+                    metadata={
+                        "end_time": self._survey_end_time.isoformat(),
+                        "abandoned": survey_service.survey_abandoned
+                    }
+                )
 
                 # Save completed survey data to file
                 if self._save_completed_survey(drone, car):
@@ -293,6 +322,16 @@ class CoordinationService:
                     print("Drone not surveying - initiating follow mode")
                     if self._initiate_follow_sequence(drone):
                         self._is_following = True
+                        
+                        # Track analytics event for follow start
+                        analytics_service.track_coordination_event(
+                            event_type="follow_start",
+                            distance=distance,
+                            drone_pos=drone_pos,
+                            car_pos=car_pos,
+                            reason="coordination_active"
+                        )
+                        
                         telemetry_manager.broadcast_event(
                             {
                                 "event": "following_triggered",
@@ -324,6 +363,22 @@ class CoordinationService:
                         False  # Clear survey flag when abandoning
                     )
 
+                    # Calculate survey duration for abandonment
+                    duration_seconds = None
+                    if self._survey_start_time:
+                        duration_seconds = (datetime.now() - self._survey_start_time).total_seconds()
+
+                    # Track analytics event for survey abandonment
+                    analytics_service.track_coordination_event(
+                        event_type="survey_abandon",
+                        distance=distance,
+                        drone_pos=drone_pos,
+                        car_pos=car_pos,
+                        duration_seconds=duration_seconds,
+                        reason="distance_exceeded",
+                        metadata={"max_distance": self.max_distance}
+                    )
+
                     if self._initiate_follow_sequence(drone):
                         self._is_following = True
                         telemetry_manager.broadcast_event(
@@ -349,6 +404,16 @@ class CoordinationService:
                     )
                     if self._is_following:
                         self._is_following = False
+                        
+                        # Track analytics event for follow stop
+                        analytics_service.track_coordination_event(
+                            event_type="follow_stop",
+                            distance=distance,
+                            drone_pos=drone_pos,
+                            car_pos=car_pos,
+                            reason="survey_in_progress"
+                        )
+                        
                         telemetry_manager.broadcast_event(
                             {
                                 "event": "following_paused",
@@ -520,6 +585,13 @@ class CoordinationService:
             print("Coordination service is already active.")
             return False
 
+        # Track system health - coordination service starting
+        analytics_service.track_system_health(
+            component="coordination_service",
+            status="online",
+            response_time_ms=None
+        )
+
         # Ensure all vehicles have the current site name set
         for vehicle_type in ["drone", "car"]:
             vehicle = vehicle_service.get_vehicle(vehicle_type)
@@ -540,6 +612,13 @@ class CoordinationService:
 
         print("Stopping coordination service...")
         self._stop_event.set()
+
+        # Track system health - coordination service stopping
+        analytics_service.track_system_health(
+            component="coordination_service",
+            status="offline",
+            response_time_ms=None
+        )
 
         # Immediately mark as inactive
         self._is_active = False

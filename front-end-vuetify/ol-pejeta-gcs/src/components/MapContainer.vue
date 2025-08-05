@@ -1453,6 +1453,7 @@ onUnmounted(() => {
 .map-container {
   position: relative;
   height: 100%;
+  width: 100%;
 }
 
 .map {
@@ -1465,25 +1466,26 @@ onUnmounted(() => {
   width: 100%;
   top: 0;
   left: 0;
-  padding: 16px;
+  /*
+    START: Key Fix
+    1. Use the --v-layout-top variable (provided by v-app-bar) to add dynamic top padding.
+       A fallback of 64px is included for safety.
+    2. Set pointer-events to none so that clicks pass through the empty parts of this container to the map below.
+  */
+  padding: calc(var(--v-layout-top, 64px) + 16px) 16px 16px;
   z-index: 1;
+  pointer-events: none;
 }
 
-.coordinates {
-  display: inline-block;
-  background-color: rgba(255, 255, 255, 0.8);
-  border-radius: 20px;
-  padding: 8px 16px;
-  margin-bottom: 10px;
-  font-size: 14px;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+/*
+  Make the direct children of the controls container (the control groups themselves) clickable again.
+  This allows clicks on buttons but not on the space between them.
+*/
+.map-controls > div {
+  pointer-events: auto;
 }
+/* END: Key Fix */
 
-.map-type-toggle {
-  display: inline-block;
-  margin-left: 11px;
-  margin-bottom: 10px;
-}
 
 .toggle-wrapper {
   background-color: rgba(255, 255, 255, 0.95);
@@ -1493,23 +1495,15 @@ onUnmounted(() => {
   backdrop-filter: blur(10px);
 }
 
-.coordination-controls {
-  display: inline-flex;
-  margin-left: 11px;
-  margin-bottom: 10px;
-}
-
-.follow-controls {
-  display: inline-flex;
-  margin-left: 11px;
-  margin-bottom: 10px;
-  gap: 8px;
-}
-
+.map-type-toggle,
+.coordination-controls,
+.follow-controls,
 .offline-controls {
   display: inline-flex;
-  margin-left: 11px;
+  margin-right: 8px;
   margin-bottom: 10px;
+  gap: 8px;
+  vertical-align: top;
 }
 
 .warning-bg {

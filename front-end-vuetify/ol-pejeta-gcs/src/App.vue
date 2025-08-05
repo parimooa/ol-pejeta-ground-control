@@ -1,5 +1,6 @@
 <template>
   <v-app>
+    <!-- The App Bar remains a direct child of v-app -->
     <v-app-bar app class="px-4" color="#1a3a5c">
       <div class="text-h6 font-weight-medium">Ol Pejeta GCS</div>
       <v-spacer/>
@@ -71,12 +72,14 @@
         </v-tab>
       </v-tabs>
     </v-app-bar>
+
+
     <InfoPanel
+      v-if="activeTab === 0"
       :distance="distance"
       :drone-telemetry-data="droneData"
       :instruction-card="instructionCard"
       :instructions="instructions"
-      :mission-steps="missionSteps"
       :status="status"
       :status-color="statusColor"
       :survey-button-enabled="surveyButtonEnabled"
@@ -84,28 +87,37 @@
       :vehicle-telemetry-data="vehicleData"
       @initiate-survey="initiateSurvey"
       :car-mission-waypoints="missionWaypoints.car"
-
-
     />
-    <v-main>
-      <div class="d-flex drone-tracking-container">
-        <MapContainer
-          :distance="distance"
-          :drone-mission-waypoints="currentMissionWaypoints"
-          :drone-telemetry-data="droneData"
-          :is-coordination-active="isCoordinationActive"
-          :is-drone-connected="isDroneConnected"
-          :is-drone-following="isDroneFollowing"
-          :is-drone-surveying="isDroneSurveying"
-          :is-vehicle-connected="isVehicleConnected"
-          :survey-complete="isSurveyComplete"
-          :vehicle-telemetry-data="vehicleData"
-          :vehicle-waypoints="Object.values(missionWaypoints.car || {})"
-          class="flex-grow-1"
-          @coordination-status="handleCoordinationStatus"
-        />
-      </div>
+
+    <!-- v-main is now a direct child of v-app, allowing it to correctly calculate content size. -->
+    <v-main :class="activeTab === 0 ? 'pa-0':''">
+      <v-window v-model="activeTab" class="fill-height">
+        <!-- Dashboard Tab -->
+        <v-window-item :value="0" class="fill-height">
+          <MapContainer
+            :distance="distance"
+            :drone-mission-waypoints="currentMissionWaypoints"
+            :drone-telemetry-data="droneData"
+            :is-coordination-active="isCoordinationActive"
+            :is-drone-connected="isDroneConnected"
+            :is-drone-following="isDroneFollowing"
+            :is-drone-surveying="isDroneSurveying"
+            :is-vehicle-connected="isVehicleConnected"
+            :survey-complete="isSurveyComplete"
+            :vehicle-telemetry-data="vehicleData"
+            :vehicle-waypoints="Object.values(missionWaypoints.car || {})"
+            class="fill-height"
+            @coordination-status="handleCoordinationStatus"
+          />
+        </v-window-item>
+
+        <!-- Analytics Tab -->
+        <v-window-item :value="1">
+          <AnalyticsPage />
+        </v-window-item>
+      </v-window>
     </v-main>
+
     <v-snackbar
       v-model="showSnackbar"
       :color="snackbarColor"
@@ -130,15 +142,16 @@ import {
   PHYSICAL_CONSTANTS,
   WEBSOCKET_CONSTANTS
 } from '@/config/constants.js'
-
+import AnalyticsPage from '@/pages/analytics.vue'
 const surveyInProgress = ref(false)
 
 // Navigation state
 const activeTab = ref(0)
 const navItems = ref([
   {label: 'Dashboard'},
-  {label: 'History'},
-  {label: 'Settings'},
+  // {label: 'History'},
+  // {label: 'Settings'},
+  { label: 'Analytics' },
 ])
 
 // Reactive telemetry data object matching your API structure
@@ -1029,10 +1042,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.drone-tracking-container {
-  width: 100%;
-  height: 100%;
-}
+
 
 :deep(.v-card) {
   margin: 0 auto;

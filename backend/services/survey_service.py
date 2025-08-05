@@ -1,9 +1,7 @@
 import asyncio
-import json
 import math
 import time
 from datetime import datetime
-from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from pymavlink import mavutil
@@ -12,7 +10,6 @@ from backend.core.flight_modes import FlightMode
 from .vehicle_service import vehicle_service
 from ..config import CONFIG
 from ..models.waypoint import Waypoint
-from ..schemas.survey import SurveyData
 
 # Global scan abandon flag
 survey_abandoned = False
@@ -113,112 +110,6 @@ class SurveyService:
                     }
                 )
         return scan_waypoints
-
-    def _save_completed_survey(self, drone: "Vehicle", car: "Vehicle"):
-        """Save completed survey data to JSON file."""
-        try:
-            # Ensure surveys directory exists
-            surveys_dir = Path(CONFIG.directories.SURVEYED_AREA)
-            surveys_dir.mkdir(exist_ok=True)
-
-            # Get current timestamp
-            timestamp = datetime.now()
-            survey_id = f"survey_{drone.vehicle_id}_{int(timestamp.timestamp())}"
-
-            duration_seconds = None
-            duration_formatted = None
-
-            if self._survey_start_time and self._survey_end_time:
-                duration_seconds = (
-                    self._survey_end_time - self._survey_start_time
-                ).total_seconds()
-
-                # Format duration as HH:MM:SS
-                hours = int(duration_seconds // 3600)
-                minutes = int((duration_seconds % 3600) // 60)
-                seconds = int(duration_seconds % 60)
-                duration_formatted = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-
-                print(
-                    f"Survey duration: {duration_formatted} ({duration_seconds:.1f} seconds)"
-                )
-
-            # Get car position for the closest waypoint calculation
-            car_position = car.position()
-            car_waypoints = car.mission_waypoints
-            closest_waypoint_id = self._find_closest_car_waypoint(
-                car_position, car_waypoints
-            )
-
-            # Generate filename
-            site_name_clean = (
-                self.current_site_name.replace(" ", "-").replace("/", "-").lower()
-            )
-            filename = f"site-{site_name_clean}-drone-surveyed-waypoints.json"
-
-            # Prepare survey data
-            survey_data = {
-                "id": survey_id,
-                "waypoints": [
-                    {
-                        "lat": wp.get("lat"),
-                        "lon": wp.get("lon"),
-                        "seq": wp.get("seq", i),
-                    }
-                    for i, wp in enumerate(drone.mission_waypoints.values())
-                ],
-                "vehicleId": str(drone.vehicle_id),
-                "completed_at": timestamp.isoformat(),
-                "mission_waypoint_id": self._survey_initiated_waypoint_id,
-                "survey_abandoned": survey_service.survey_abandoned,
-                "saved_at": timestamp.isoformat(),
-                "start_time": (
-                    self._survey_start_time.isoformat()
-                    if self._survey_start_time
-                    else None
-                ),
-                "end_time": (
-                    self._survey_end_time.isoformat() if self._survey_end_time else None
-                ),
-                "duration_seconds": duration_seconds,
-                "duration_formatted": duration_formatted,
-            }
-
-            # Load existing survey data if file exists
-            file_path = surveys_dir / filename
-            existing_surveys = []
-
-            if file_path.exists():
-                try:
-                    with open(file_path, "r") as f:
-                        existing_data = json.load(f)
-                        if isinstance(existing_data, list):
-                            existing_surveys = existing_data
-                        elif isinstance(existing_data, dict):
-                            existing_surveys = [existing_data]
-                except (json.JSONDecodeError, IOError) as e:
-                    print(f"Warning: Could not read existing file {filename}: {e}")
-                    existing_surveys = []
-
-            # Add new survey to array
-            existing_surveys.append(survey_data)
-
-            # Save updated array to file
-            with open(file_path, "w") as f:
-                json.dump(existing_surveys, f, indent=2)
-
-            print(f"Survey saved successfully: {filename}")
-            print(f"File path: {file_path.absolute()}")
-            print(f"Total surveys in file: {len(existing_surveys)}")
-            print(f"Drone waypoints: {len(survey_data['waypoints'])}")
-            print(f"Closest car waypoint: {closest_waypoint_id}")
-            print(f"Scan abandoned: {survey_service.survey_abandoned}")
-
-            return True
-
-        except Exception as e:
-            print(f"Error saving survey file: {e}")
-            return False
 
     async def execute_lawnmower_scan(
         self,
@@ -397,7 +288,7 @@ class SurveyService:
     async def execute_proximity_survey(
         self,
         center_waypoint: Dict,
-        max_distance_from_center: float = 400,
+        max_distance_from_center: float = CONFIG.survey.MAX_RADIUS,
         tolerance: float = 3.0,
         timeout: int = 320,
     ) -> bool:
@@ -487,67 +378,25 @@ class SurveyService:
             print("Failed to start drone mission.")
             return False
 
-        # print("Drone executing proximity survey mission")
-        #
-        # # Monitor mission progress
-        # print("Drone executing proximity survey...")
-        # scan_start_time = time.time()
-        # scan_start_datetime = datetime.now()
-        # mission_complete = False
-        #
-        # while time.time() - scan_start_time < timeout:
-        #     # Check if mission is complete
-        #     if drone_vehicle.is_mission_complete():
-        #         print("Proximity survey completed successfully!")
-        #         mission_complete = True
-        #         break
-        #
-        #     await asyncio.sleep(1)
-        # scan_end_datetime = datetime.now()
-        # if self.survey_abandoned:
-        #     print(f"\nPROXIMITY SURVEY ABANDONED!")
-        #     survey_result = False
-        # elif mission_complete:
-        #     print(
-        #         "Drone is returning to its starting position as per the mission plan."
-        #     )
-        #     survey_result = True
-        # else:
-        #     # Timeout occurred without completion
-        #     print("\n Proximity survey timed out!")
-        #     survey_result = False
-        #
-        # print("Switching drone back to GUIDED mode as a safety measure...")
-        # if not drone_vehicle.set_mode(FlightMode.GUIDED):
-        #     print("Failed to switch drone back to GUIDED mode after timeout.")
-        # await asyncio.sleep(2)
-        #
-        # mission_waypoint_id=None
-        # survey_data = SurveyData(waypoints=scan_waypoints, start_time=scan_start_datetime,
-        #                          survey_abandoned=self.survey_abandoned, vehicleId=car_vehicle.vehicle_id,
-        #                          end_time=scan_end_datetime,
-        #                          mission_waypoint_id=mission_waypoint_id)
-        #
-        # self._save_completed_survey(drone_vehicle, car_vehicle)  # save mission in file
-        # return survey_result
-
     async def _generate_constrained_lawnmower_waypoints(
         self, center_point: Dict, max_distance: float
     ) -> List[Dict]:
         """Generate lawnmower pattern constrained within max_distance from center."""
         scan_waypoints = []
 
-        # Calculate safe pattern dimensions to stay within max_distance
+        # To maximize the survey area, we'll create a square pattern that fits
+        # snugly within the circular `max_distance` constraint.
+        # The side of a square inscribed in a circle of radius 'r' is r * sqrt(2).
+        # We use a 99% factor for a small safety margin against GPS drift.
+        side_length = max_distance * math.sqrt(2) * 0.99
 
-        safe_radius = max_distance * 0.4  # Half the distance for radius
-
-        # Adjust pattern size based on constraint
-        pattern_length = min(CONFIG.survey.PATTERN_LENGTH, safe_radius * 1.5)
-        pattern_width = min(CONFIG.survey.MAX_RADIUS * 2, safe_radius * 1.5)
+        # Adjust pattern size based on the calculated side_length and global config limits
+        pattern_length = min(CONFIG.survey.PATTERN_LENGTH, side_length)
+        pattern_width = min(CONFIG.survey.MAX_RADIUS * 2, side_length)
         swath_width = CONFIG.survey.SWATH_WIDTH
 
         print(
-            f"Constrained pattern: {pattern_length}m x {pattern_width}m (max distance: {max_distance}m)"
+            f"Constrained pattern: {pattern_length:.1f}m x {pattern_width:.1f}m (max distance: {max_distance}m)"
         )
 
         num_stripes = int(pattern_width / swath_width)

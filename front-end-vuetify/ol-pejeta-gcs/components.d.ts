@@ -17,7 +17,6 @@ declare module 'vue' {
     HelloWorld: typeof import('./src/components/HelloWorld.vue')['default']
     InfoPanel: typeof import('./src/components/InfoPanel.vue')['default']
     InstructionsCard: typeof import('./src/components/panels/InstructionsCard.vue')['default']
-    MapComponent: typeof import('./src/components/MapComponent.vue')['default']
     MapContainer: typeof import('./src/components/MapContainer.vue')['default']
     MapTypeDownloadSection: typeof import('./src/components/MapTypeDownloadSection.vue')['default']
     MissionProgressCard: typeof import('./src/components/info-panel/MissionProgressCard.vue')['default']

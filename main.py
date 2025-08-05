@@ -1,11 +1,14 @@
+import asyncio
+
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import asyncio
-from backend.services.vehicle_service import vehicle_service
-from backend.api.routes import vehicle, survey, coordination, survey_logs
-from backend.api.routes import vehicle, survey, coordination
+
+from backend.api.routes import survey_logs
+from backend.api.routes import vehicle, survey, coordination, analytics
 from backend.api.websockets.telemetry import telemetry_manager
+from backend.services.vehicle_service import vehicle_service
+from backend.services.analytics_service import analytics_service
 
 app = FastAPI(
     title="Drone Control API",
@@ -26,8 +29,8 @@ app.add_middleware(
 app.include_router(vehicle.router)
 app.include_router(survey.router)
 app.include_router(coordination.router)
-
 app.include_router(survey_logs.router)
+app.include_router(analytics.router)
 
 
 @app.get("/")
@@ -66,6 +69,13 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
+    # Persist analytics data before shutdown
+    try:
+        analytics_service.force_persist()
+        print("Analytics data persisted before shutdown")
+    except Exception as e:
+        print(f"Error persisting analytics data on shutdown: {e}")
+
     # Disconnect all vehicles
     for vehicle_type in vehicle_service.vehicles:
         vehicle_service.disconnect_vehicle(vehicle_type)

@@ -170,7 +170,6 @@ class Vehicle:
         self._heartbeat_thread.daemon = True
         self._heartbeat_thread.start()
 
-
         self._message_listener_thread = threading.Thread(
             target=self._message_listener_loop
         )

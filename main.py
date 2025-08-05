@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api.routes import survey_logs
-from backend.api.routes import vehicle, survey, coordination,analytics
+from backend.api.routes import vehicle, survey, coordination, analytics
 from backend.api.websockets.telemetry import telemetry_manager
 from backend.services.vehicle_service import vehicle_service
 from backend.services.analytics_service import analytics_service
@@ -31,6 +31,8 @@ app.include_router(survey.router)
 app.include_router(coordination.router)
 app.include_router(survey_logs.router)
 app.include_router(analytics.router)
+
+
 @app.get("/")
 async def root():
     return {"message": "Welcome to the Drone Control API"}

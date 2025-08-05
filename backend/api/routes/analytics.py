@@ -100,8 +100,24 @@ async def get_dashboard_data():
             "system_health_24h": analytics_service.get_system_health_report(
                 hours_back=24
             ),
+            # --- START: Add missing data for the dashboard ---
+            "mission_effectiveness_24h": analytics_service.get_mission_effectiveness_analysis(
+                hours_back=24
+            ),
+            "safety_summary_24h": analytics_service.get_safety_events_summary(
+                hours_back=24
+            ),
+            # --- END: Add missing data ---
             "mission_statistics": analytics_service.mission_stats.copy(),
             "recent_events": _get_recent_events(limit=10),
+            "enhanced_data_summary": {
+                "vehicle_telemetry_records": len(analytics_service.vehicle_telemetry),
+                "mission_effectiveness_records": len(
+                    analytics_service.mission_effectiveness
+                ),
+                "safety_events_count": len(analytics_service.safety_events),
+                "research_data_available": True,
+            },
         }
     except Exception as e:
         raise HTTPException(
@@ -331,6 +347,273 @@ async def force_persist_data():
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to persist analytics data: {str(e)}"
+        )
+
+
+@router.get("/telemetry/summary")
+async def get_telemetry_summary(hours_back: int = Query(24, ge=1, le=168)):
+    """
+    Get vehicle telemetry summary for research analysis
+    """
+    try:
+        cutoff_time = datetime.now() - timedelta(hours=hours_back)
+        recent_telemetry = [
+            t
+            for t in analytics_service.vehicle_telemetry
+            if datetime.fromisoformat(t.timestamp) > cutoff_time
+        ]
+
+        if not recent_telemetry:
+            return {"error": "No telemetry data found for this period"}
+
+        # Group by vehicle type
+        drone_data = [t for t in recent_telemetry if t.vehicle_type == "drone"]
+        car_data = [t for t in recent_telemetry if t.vehicle_type == "car"]
+
+        def analyze_telemetry(data):
+            if not data:
+                return {"error": "No data available"}
+
+            battery_levels = [t.battery_remaining_percentage for t in data]
+            speeds = [t.ground_speed for t in data]
+            power_consumptions = [
+                t.power_consumption_watts for t in data if t.power_consumption_watts
+            ]
+            gps_precisions = [
+                t.gps_precision_meters for t in data if t.gps_precision_meters
+            ]
+
+            return {
+                "data_points": len(data),
+                "battery_stats": {
+                    "avg_percentage": (
+                        sum(battery_levels) / len(battery_levels)
+                        if battery_levels
+                        else 0
+                    ),
+                    "min_percentage": min(battery_levels) if battery_levels else 0,
+                    "max_percentage": max(battery_levels) if battery_levels else 0,
+                },
+                "speed_stats": {
+                    "avg_speed_ms": sum(speeds) / len(speeds) if speeds else 0,
+                    "max_speed_ms": max(speeds) if speeds else 0,
+                },
+                "power_stats": {
+                    "avg_consumption_watts": (
+                        sum(power_consumptions) / len(power_consumptions)
+                        if power_consumptions
+                        else 0
+                    ),
+                    "total_energy_wh": (
+                        sum(power_consumptions) * hours_back / len(power_consumptions)
+                        if power_consumptions
+                        else 0
+                    ),
+                },
+                "navigation_stats": {
+                    "avg_gps_precision_m": (
+                        sum(gps_precisions) / len(gps_precisions)
+                        if gps_precisions
+                        else 0
+                    ),
+                    "best_gps_precision_m": (
+                        min(gps_precisions) if gps_precisions else 0
+                    ),
+                },
+            }
+
+        return {
+            "time_period_hours": hours_back,
+            "total_records": len(recent_telemetry),
+            "drone_telemetry": analyze_telemetry(drone_data),
+            "car_telemetry": analyze_telemetry(car_data),
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get telemetry summary: {str(e)}"
+        )
+
+
+@router.get("/mission-effectiveness")
+async def get_mission_effectiveness_analysis(hours_back: int = Query(24, ge=1, le=168)):
+    """
+    Get mission effectiveness analysis for research
+    """
+    try:
+        cutoff_time = datetime.now() - timedelta(hours=hours_back)
+        recent_missions = [
+            m
+            for m in analytics_service.mission_effectiveness
+            if datetime.fromisoformat(m.timestamp) > cutoff_time
+        ]
+
+        if not recent_missions:
+            return {"error": "No mission effectiveness data found for this period"}
+
+        # Analyze mission performance
+        total_missions = len(recent_missions)
+        total_area_covered = sum(
+            m.area_covered_m2 for m in recent_missions if m.area_covered_m2
+        )
+        total_distance = sum(m.distance_traveled_meters for m in recent_missions)
+        total_duration = sum(m.mission_duration_seconds for m in recent_missions)
+
+        success_rates = [m.success_rate_percentage for m in recent_missions]
+        quality_scores = [
+            m.survey_quality_score for m in recent_missions if m.survey_quality_score
+        ]
+
+        # Time-based analysis
+        time_periods = {}
+        for mission in recent_missions:
+            period = mission.time_of_day or "unknown"
+            if period not in time_periods:
+                time_periods[period] = []
+            time_periods[period].append(mission)
+
+        time_analysis = {}
+        for period, missions in time_periods.items():
+            avg_success = sum(m.success_rate_percentage for m in missions) / len(
+                missions
+            )
+            avg_quality = sum(
+                m.survey_quality_score for m in missions if m.survey_quality_score
+            ) / len([m for m in missions if m.survey_quality_score])
+            time_analysis[period] = {
+                "mission_count": len(missions),
+                "avg_success_rate": round(avg_success, 1),
+                "avg_quality_score": round(avg_quality, 1) if avg_quality else None,
+            }
+
+        return {
+            "time_period_hours": hours_back,
+            "overall_stats": {
+                "total_missions": total_missions,
+                "total_area_covered_m2": round(total_area_covered, 1),
+                "total_distance_traveled_m": round(total_distance, 1),
+                "total_flight_time_hours": round(total_duration / 3600, 1),
+                "avg_success_rate": (
+                    round(sum(success_rates) / len(success_rates), 1)
+                    if success_rates
+                    else 0
+                ),
+                "avg_quality_score": (
+                    round(sum(quality_scores) / len(quality_scores), 1)
+                    if quality_scores
+                    else 0
+                ),
+            },
+            "time_of_day_analysis": time_analysis,
+            "efficiency_metrics": {
+                "area_coverage_rate_m2_per_hour": (
+                    round(total_area_covered / (total_duration / 3600), 1)
+                    if total_duration > 0
+                    else 0
+                ),
+                "avg_mission_duration_minutes": (
+                    round(total_duration / total_missions / 60, 1)
+                    if total_missions > 0
+                    else 0
+                ),
+                "distance_efficiency_m_per_minute": (
+                    round(total_distance / (total_duration / 60), 1)
+                    if total_duration > 0
+                    else 0
+                ),
+            },
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get mission effectiveness analysis: {str(e)}",
+        )
+
+
+@router.get("/safety-events")
+async def get_safety_events_summary(hours_back: int = Query(24, ge=1, le=168)):
+    """
+    Get safety events summary for risk analysis
+    """
+    try:
+        cutoff_time = datetime.now() - timedelta(hours=hours_back)
+        recent_events = [
+            e
+            for e in analytics_service.safety_events
+            if datetime.fromisoformat(e.timestamp) > cutoff_time
+        ]
+
+        if not recent_events:
+            return {"message": "No safety events recorded for this period (good news!)"}
+
+        # Analyze by severity
+        severity_counts = {}
+        for event in recent_events:
+            severity = event.severity
+            if severity not in severity_counts:
+                severity_counts[severity] = 0
+            severity_counts[severity] += 1
+
+        # Analyze by event type
+        event_type_counts = {}
+        for event in recent_events:
+            event_type = event.event_type
+            if event_type not in event_type_counts:
+                event_type_counts[event_type] = 0
+            event_type_counts[event_type] += 1
+
+        # Resolution analysis
+        resolved_events = [
+            e for e in recent_events if e.resolution_time_seconds is not None
+        ]
+        human_intervention_count = len(
+            [e for e in recent_events if e.human_intervention_required]
+        )
+
+        return {
+            "time_period_hours": hours_back,
+            "total_safety_events": len(recent_events),
+            "severity_breakdown": severity_counts,
+            "event_type_breakdown": event_type_counts,
+            "resolution_stats": {
+                "resolved_events": len(resolved_events),
+                "avg_resolution_time_seconds": (
+                    sum(e.resolution_time_seconds for e in resolved_events)
+                    / len(resolved_events)
+                    if resolved_events
+                    else 0
+                ),
+                "human_intervention_required": human_intervention_count,
+                "autonomous_resolution_rate": (
+                    round(
+                        (len(resolved_events) - human_intervention_count)
+                        / len(resolved_events)
+                        * 100,
+                        1,
+                    )
+                    if resolved_events
+                    else 0
+                ),
+            },
+            "recent_events": [
+                {
+                    "timestamp": e.timestamp,
+                    "event_type": e.event_type,
+                    "severity": e.severity,
+                    "description": e.description,
+                    "vehicle_id": e.vehicle_id,
+                    "resolved": e.resolution_time_seconds is not None,
+                }
+                for e in sorted(recent_events, key=lambda x: x.timestamp, reverse=True)[
+                    :10
+                ]
+            ],
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get safety events summary: {str(e)}"
         )
 
 

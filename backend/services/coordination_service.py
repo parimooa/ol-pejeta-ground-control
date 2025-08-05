@@ -4,7 +4,7 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from backend.api.websockets.telemetry import telemetry_manager
 from backend.config import CONFIG
@@ -243,16 +243,16 @@ class CoordinationService:
             if is_surveying and not self._last_survey_mode_state:
                 self._survey_start_time = datetime.now()
                 print(f"Survey started at: {self._survey_start_time.isoformat()}")
-                
+
                 # Track analytics event
                 analytics_service.track_coordination_event(
                     event_type="survey_start",
                     distance=distance,
                     drone_pos=drone_pos,
                     car_pos=car_pos,
-                    metadata={"start_time": self._survey_start_time.isoformat()}
+                    metadata={"start_time": self._survey_start_time.isoformat()},
                 )
-                
+
                 telemetry_manager.broadcast_event(
                     {
                         "event": "survey_started",
@@ -269,7 +269,9 @@ class CoordinationService:
                 # Calculate survey duration
                 duration_seconds = None
                 if self._survey_start_time:
-                    duration_seconds = (self._survey_end_time - self._survey_start_time).total_seconds()
+                    duration_seconds = (
+                        self._survey_end_time - self._survey_start_time
+                    ).total_seconds()
 
                 # Track analytics event for survey completion
                 analytics_service.track_coordination_event(
@@ -280,8 +282,13 @@ class CoordinationService:
                     duration_seconds=duration_seconds,
                     metadata={
                         "end_time": self._survey_end_time.isoformat(),
-                        "abandoned": survey_service.survey_abandoned
-                    }
+                        "abandoned": survey_service.survey_abandoned,
+                    },
+                )
+
+                # Track mission effectiveness for completed survey
+                self._track_mission_effectiveness(
+                    drone, car, duration_seconds, survey_service.survey_abandoned
                 )
 
                 # Save completed survey data to file
@@ -310,6 +317,15 @@ class CoordinationService:
             # Check proximity for survey button state
             self._check_proximity_and_update_ui(distance)
 
+            # Track enhanced vehicle telemetry for research (every 5th iteration to avoid spam)
+            if hasattr(self, "_telemetry_counter"):
+                self._telemetry_counter += 1
+            else:
+                self._telemetry_counter = 0
+
+            if self._telemetry_counter % 5 == 0:  # Track every 5th loop iteration
+                self._track_vehicle_telemetry(drone, car, distance)
+
             # --- COORDINATION LOGIC ---
             # When coordination is active:
             # 1. If NOT surveying -> always follow car
@@ -322,16 +338,16 @@ class CoordinationService:
                     print("Drone not surveying - initiating follow mode")
                     if self._initiate_follow_sequence(drone):
                         self._is_following = True
-                        
+
                         # Track analytics event for follow start
                         analytics_service.track_coordination_event(
                             event_type="follow_start",
                             distance=distance,
                             drone_pos=drone_pos,
                             car_pos=car_pos,
-                            reason="coordination_active"
+                            reason="coordination_active",
                         )
-                        
+
                         telemetry_manager.broadcast_event(
                             {
                                 "event": "following_triggered",
@@ -366,7 +382,9 @@ class CoordinationService:
                     # Calculate survey duration for abandonment
                     duration_seconds = None
                     if self._survey_start_time:
-                        duration_seconds = (datetime.now() - self._survey_start_time).total_seconds()
+                        duration_seconds = (
+                            datetime.now() - self._survey_start_time
+                        ).total_seconds()
 
                     # Track analytics event for survey abandonment
                     analytics_service.track_coordination_event(
@@ -376,7 +394,7 @@ class CoordinationService:
                         car_pos=car_pos,
                         duration_seconds=duration_seconds,
                         reason="distance_exceeded",
-                        metadata={"max_distance": self.max_distance}
+                        metadata={"max_distance": self.max_distance},
                     )
 
                     if self._initiate_follow_sequence(drone):
@@ -404,16 +422,16 @@ class CoordinationService:
                     )
                     if self._is_following:
                         self._is_following = False
-                        
+
                         # Track analytics event for follow stop
                         analytics_service.track_coordination_event(
                             event_type="follow_stop",
                             distance=distance,
                             drone_pos=drone_pos,
                             car_pos=car_pos,
-                            reason="survey_in_progress"
+                            reason="survey_in_progress",
                         )
-                        
+
                         telemetry_manager.broadcast_event(
                             {
                                 "event": "following_paused",
@@ -482,6 +500,220 @@ class CoordinationService:
 
         print("Successfully entered FOLLOW mode.")
         return True
+
+    def _track_vehicle_telemetry(
+        self, drone: "Vehicle", car: "Vehicle", distance: float
+    ):
+        """Track enhanced vehicle telemetry for research analysis"""
+        try:
+            # Track drone telemetry
+            if drone and drone.vehicle:
+                drone_pos = drone.position()
+                if drone_pos:
+                    # Calculate GPS precision estimate (simplified)
+                    gps_precision = self._estimate_gps_precision(drone_pos)
+
+                    # Calculate waypoint deviation
+                    waypoint_deviation = self._calculate_waypoint_deviation(
+                        drone, drone_pos
+                    )
+
+                    # Estimate communication quality
+                    comm_quality = self._estimate_communication_quality(drone_pos)
+
+                    analytics_service.track_vehicle_telemetry(
+                        vehicle_id=drone.vehicle_id,
+                        vehicle_type="drone",
+                        position_data=drone_pos,
+                        gps_precision_meters=gps_precision,
+                        waypoint_deviation_meters=waypoint_deviation,
+                        signal_strength_dbm=comm_quality.get("signal_strength"),
+                        communication_latency_ms=comm_quality.get("latency"),
+                        packet_loss_percentage=comm_quality.get("packet_loss"),
+                    )
+
+            # Track car telemetry
+            if car and car.vehicle:
+                car_pos = car.position()
+                if car_pos:
+                    # Calculate GPS precision estimate
+                    gps_precision = self._estimate_gps_precision(car_pos)
+
+                    # Calculate waypoint deviation
+                    waypoint_deviation = self._calculate_waypoint_deviation(
+                        car, car_pos
+                    )
+
+                    # Estimate communication quality
+                    comm_quality = self._estimate_communication_quality(car_pos)
+
+                    analytics_service.track_vehicle_telemetry(
+                        vehicle_id=car.vehicle_id,
+                        vehicle_type="car",
+                        position_data=car_pos,
+                        gps_precision_meters=gps_precision,
+                        waypoint_deviation_meters=waypoint_deviation,
+                        signal_strength_dbm=comm_quality.get("signal_strength"),
+                        communication_latency_ms=comm_quality.get("latency"),
+                        packet_loss_percentage=comm_quality.get("packet_loss"),
+                    )
+
+        except Exception as e:
+            print(f"Error tracking vehicle telemetry: {e}")
+
+    def _estimate_gps_precision(self, position_data: dict) -> float:
+        """Estimate GPS precision based on available data"""
+        # Simple estimation based on ground speed and system status
+        ground_speed = position_data.get("ground_speed", 0)
+        system_status = position_data.get("system_status", 0)
+
+        # Better precision when stationary and armed
+        base_precision = 2.5  # meters
+        if ground_speed < 0.1:  # Stationary
+            base_precision = 1.5
+        if system_status == 4:  # Armed and active
+            base_precision *= 0.8
+
+        return base_precision
+
+    def _calculate_waypoint_deviation(
+        self, vehicle: "Vehicle", position_data: dict
+    ) -> Optional[float]:
+        """Calculate deviation from target waypoint"""
+        try:
+            current_wp_seq = position_data.get("current_mission_wp_seq")
+            if current_wp_seq is None or not vehicle.mission_waypoints:
+                return None
+
+            # Get target waypoint
+            target_wp = vehicle.mission_waypoints.get(current_wp_seq)
+            if not target_wp:
+                return None
+
+            # Calculate distance to target waypoint
+            current_lat = position_data.get("latitude")
+            current_lon = position_data.get("longitude")
+            target_lat = target_wp.get("lat")
+            target_lon = target_wp.get("lon")
+
+            if all([current_lat, current_lon, target_lat, target_lon]):
+                return self._calculate_distance(
+                    {"latitude": current_lat, "longitude": current_lon},
+                    {"latitude": target_lat, "longitude": target_lon},
+                )
+        except Exception:
+            pass
+        return None
+
+    def _estimate_communication_quality(self, position_data: dict) -> dict:
+        """Estimate communication quality metrics"""
+        # Simple estimation based on system health and battery
+        battery_voltage = position_data.get("battery_voltage", 12.0)
+        system_status = position_data.get("system_status", 0)
+
+        # Signal strength estimation (-40 to -100 dBm)
+        signal_strength = -50 - (
+            abs(12.6 - battery_voltage) * 10
+        )  # Lower voltage = weaker signal
+        signal_strength = max(-100, min(-40, signal_strength))
+
+        # Latency estimation (10-100ms)
+        latency = 20 + (abs(12.6 - battery_voltage) * 15)
+        if system_status != 4:  # Not fully operational
+            latency += 30
+
+        # Packet loss estimation (0-5%)
+        packet_loss = (
+            max(0, (12.6 - battery_voltage) * 2) if battery_voltage < 12.0 else 0
+        )
+
+        return {
+            "signal_strength": signal_strength,
+            "latency": latency,
+            "packet_loss": packet_loss,
+        }
+
+    def _track_mission_effectiveness(
+        self, drone: "Vehicle", car: "Vehicle", duration_seconds: float, abandoned: bool
+    ):
+        """Track mission effectiveness metrics for research analysis"""
+        try:
+            if not duration_seconds:
+                return
+
+            # Calculate mission metrics
+            mission_id = f"survey_{int(time.time())}"
+
+            # Estimate distance traveled (simplified)
+            distance_traveled = 0
+            if drone and drone.mission_waypoints:
+                # Rough estimate based on waypoint pattern
+                waypoint_count = len(drone.mission_waypoints)
+                if waypoint_count > 1:
+                    # Assume average 50m between waypoints for survey pattern
+                    distance_traveled = waypoint_count * 50
+
+            # Calculate objectives
+            total_waypoints = (
+                len(drone.mission_waypoints) if drone and drone.mission_waypoints else 0
+            )
+            visited_waypoints = (
+                len(drone.position().get("visited_waypoints", [])) if drone else 0
+            )
+
+            # Calculate coverage area (simplified rectangular estimate)
+            area_covered = None
+            if total_waypoints > 4:  # Minimum for rectangular pattern
+                # Rough estimate: 200m x 100m survey area
+                area_covered = 20000  # m²
+                if abandoned:
+                    # Reduce area if abandoned
+                    completion_ratio = (
+                        visited_waypoints / total_waypoints
+                        if total_waypoints > 0
+                        else 0
+                    )
+                    area_covered = area_covered * completion_ratio
+
+            # Survey quality score (0-100)
+            quality_score = 85  # Base quality
+            if abandoned:
+                quality_score = 60  # Lower quality for abandoned surveys
+            if duration_seconds < 60:  # Very short surveys
+                quality_score = 40
+            elif duration_seconds > 600:  # Very long surveys might be comprehensive
+                quality_score = 95
+
+            # Calculate success metrics
+            objectives_completed = (
+                visited_waypoints if not abandoned else max(0, visited_waypoints - 2)
+            )
+            objectives_total = total_waypoints
+
+            # Environmental context
+            weather_conditions = "clear"  # Could be enhanced with real weather data
+            terrain_difficulty = "moderate"  # Could be enhanced with terrain analysis
+
+            analytics_service.track_mission_effectiveness(
+                mission_id=mission_id,
+                mission_type="survey",
+                mission_duration_seconds=duration_seconds,
+                distance_traveled_meters=distance_traveled,
+                objectives_completed=objectives_completed,
+                objectives_total=objectives_total,
+                area_covered_m2=area_covered,
+                coverage_completeness_percentage=(
+                    (visited_waypoints / total_waypoints * 100)
+                    if total_waypoints > 0
+                    else 0
+                ),
+                survey_quality_score=quality_score,
+                weather_conditions=weather_conditions,
+                terrain_difficulty=terrain_difficulty,
+            )
+
+        except Exception as e:
+            print(f"Error tracking mission effectiveness: {e}")
 
     def is_active(self) -> bool:
         return self._is_active
@@ -559,9 +791,7 @@ class CoordinationService:
 
         # Execute survey with a constrained pattern
         success = await survey_service.execute_proximity_survey(
-            survey_center,
-            max_distance_from_center=self.max_distance
-            * 0.8,  # 80% of max distance for safety
+            survey_center, max_distance_from_center=self.max_distance
         )
 
         # Clear the flag when survey completes
@@ -587,9 +817,7 @@ class CoordinationService:
 
         # Track system health - coordination service starting
         analytics_service.track_system_health(
-            component="coordination_service",
-            status="online",
-            response_time_ms=None
+            component="coordination_service", status="online", response_time_ms=None
         )
 
         # Ensure all vehicles have the current site name set
@@ -615,9 +843,7 @@ class CoordinationService:
 
         # Track system health - coordination service stopping
         analytics_service.track_system_health(
-            component="coordination_service",
-            status="offline",
-            response_time_ms=None
+            component="coordination_service", status="offline", response_time_ms=None
         )
 
         # Immediately mark as inactive

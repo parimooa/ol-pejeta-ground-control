@@ -1,11 +1,10 @@
-import time
 from typing import Dict, Any, Optional, List, Callable
-import json
-import math
-from backend.models.vehicle import Vehicle
-from backend.core.flight_modes import FlightMode
+
+from pymavlink import mavwp, mavutil
+
 from backend.config import get_vehicle_settings
-from backend.services.waypoint_file_service import waypoint_file_service
+from backend.core.flight_modes import FlightMode
+from backend.models.vehicle import Vehicle
 
 
 class VehicleService:
@@ -152,7 +151,6 @@ class VehicleService:
             return False
 
         try:
-            from pymavlink import mavwp, mavutil
 
             wploader = mavwp.MAVWPLoader()
             try:

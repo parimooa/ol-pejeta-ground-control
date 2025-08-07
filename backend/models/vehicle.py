@@ -341,8 +341,19 @@ class Vehicle:
         except Exception as e:
             print(f"Error fetching mission waypoints: {e}")
 
-    def set_mode(self, mode_id: FlightMode) -> bool:
-        """Set the flight mode of the vehicle."""
+    def set_mode(
+        self,
+        mode_id: FlightMode,
+        loiter_altitude: float = None,
+        pause_mission: bool = None,
+    ) -> bool:
+        """Set the flight mode of the vehicle or pause/continue mission.
+
+        Args:
+            mode_id: The flight mode to set
+            loiter_altitude: Optional altitude for loiter mode (in meters)
+            pause_mission: True to pause, False to continue, None for normal mode change
+        """
         if not self.vehicle:
             print("Vehicle not connected. Cannot set mode.")
             return False
@@ -350,21 +361,50 @@ class Vehicle:
             print(f"Invalid mode_id type: {type(mode_id)}. Expected FlightMode enum.")
             return False
 
-        print(f"Setting mode to {mode_id.name} (mode_id: {mode_id.value})")
+        # Handle mission pause/continue commands
+        if pause_mission is not None:
+            action = "Pausing" if pause_mission else "Continuing"
+            print(f"{action} mission...")
 
-        self.vehicle.mav.command_long_send(
-            self.vehicle.target_system,
-            self.vehicle.target_component,
-            mavutil.mavlink.MAV_CMD_DO_SET_MODE,
-            0,
-            mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
-            mode_id.value,
-            0,
-            0,
-            0,
-            0,
-            0,
-        )
+            self.vehicle.mav.command_long_send(
+                self.vehicle.target_system,
+                self.vehicle.target_component,
+                mavutil.mavlink.MAV_CMD_DO_PAUSE_CONTINUE,
+                0,  # confirmation
+                0 if pause_mission else 1,  # param1: 0 = pause, 1 = continue
+                0,  # param2: reserved
+                0,  # param3: reserved
+                0,  # param4: reserved
+                0,  # param5: reserved
+                0,  # param6: reserved
+                0,  # param7: reserved
+            )
+        else:
+            # Normal mode change
+            print(f"Setting mode to {mode_id.name} (mode_id: {mode_id.value})")
+
+            # Set loiter altitude if provided and mode supports it
+            if loiter_altitude is not None and mode_id in [
+                FlightMode.LOITER,
+                FlightMode.ALT_HOLD,
+            ]:
+                print(f"Setting loiter altitude to {loiter_altitude} meters")
+
+            self.vehicle.mav.command_long_send(
+                self.vehicle.target_system,
+                self.vehicle.target_component,
+                mavutil.mavlink.MAV_CMD_DO_SET_MODE,
+                0,
+                mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+                mode_id.value,
+                0,
+                (
+                    loiter_altitude if loiter_altitude is not None else 0
+                ),  # param3 for altitude
+                0,
+                0,
+                0,
+            )
 
         # Wait for confirmation
         start_time = time.time()
@@ -666,7 +706,7 @@ class Vehicle:
             for i, waypoint in enumerate(waypoints):
                 # Wait for the vehicle to request the next waypoint (MISSION_REQUEST)
                 start_time = time.time()
-                while time.time() - start_time < 10:  # 10-second timeout per waypoint
+                while time.time() - start_time < 20:  # 10-second timeout per waypoint
                     msg = self.vehicle.recv_match(
                         type="MISSION_REQUEST", blocking=False, timeout=1
                     )

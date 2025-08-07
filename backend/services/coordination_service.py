@@ -34,6 +34,7 @@ class CoordinationService:
         self._survey_mode_detected = False
         self.proximity_threshold = CONFIG.coordination.PROXIMITY_THRESHOLD
         self._survey_button_enabled = False
+        self._survey_paused = False
         self._last_proximity_check = 0
         self._proximity_check_cooldown = CONFIG.coordination.PROXIMITY_CHECK_COOLDOWN
         self._last_survey_mode_state = False  # Track previous survey state
@@ -263,6 +264,7 @@ class CoordinationService:
 
             # Check for survey completion
             if self._last_survey_mode_state and not is_surveying:
+                self._survey_paused = False
                 self._survey_end_time = datetime.now()
                 print("Survey completed - drone switched back to GUIDED mode")
 
@@ -636,7 +638,7 @@ class CoordinationService:
     def _track_mission_effectiveness(
         self, drone: "Vehicle", car: "Vehicle", duration_seconds: float, abandoned: bool
     ):
-        """Track mission effectiveness metrics for research analysis"""
+        """Track mission effectiveness metrics for  analysis"""
         try:
             if not duration_seconds:
                 return
@@ -691,8 +693,8 @@ class CoordinationService:
             objectives_total = total_waypoints
 
             # Environmental context
-            weather_conditions = "clear"  # Could be enhanced with real weather data
-            terrain_difficulty = "moderate"  # Could be enhanced with terrain analysis
+            weather_conditions = "clear"  # TODO integrate Weather API
+            terrain_difficulty = "moderate"  # TODO
 
             analytics_service.track_mission_effectiveness(
                 mission_id=mission_id,
@@ -720,6 +722,9 @@ class CoordinationService:
 
     def is_following(self) -> bool:
         return self._is_following
+
+    def is_survey_paused(self) -> bool:
+        return self._survey_paused
 
     def is_surveying(self) -> bool:
         """Check if drone is currently in survey mode."""
@@ -778,6 +783,7 @@ class CoordinationService:
 
         # Disable survey button while survey is active
         self._survey_button_enabled = False
+
         telemetry_manager.broadcast_event(
             {
                 "event": "survey_button_state_changed",

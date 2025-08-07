@@ -275,6 +275,8 @@ const eventColorMap = {
   start: 'blue',
   abandon: 'amber-darken-2',
   stop: 'orange-darken-2',
+  pause: 'deep-orange',
+  resume: 'green',
   fault: 'red-darken-2',
   follow: 'deep-purple-lighten-1',
   coordination: 'cyan-darken-1',
@@ -310,6 +312,8 @@ const getEventIcon = (eventType) => {
   if (eventType.includes('start')) return 'mdi-play-circle-outline';
   if (eventType.includes('abandon')) return 'mdi-alert-circle-outline';
   if (eventType.includes('stop')) return 'mdi-stop-circle-outline';
+  if (eventType.includes('pause')) return 'mdi-pause-circle-outline';
+  if (eventType.includes('resume')) return 'mdi-play-circle-outline';
   if (eventType.includes('fault')) return 'mdi-close-circle-outline';
   return 'mdi-information-outline';
 };

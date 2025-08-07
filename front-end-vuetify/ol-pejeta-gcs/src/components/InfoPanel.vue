@@ -26,6 +26,8 @@
       />
       <DroneStatusCard
         :telemetry-data="droneTelemetryData"
+        :survey-in-progress="surveyInProgress"
+        :survey-paused="surveyPaused"
       />
       <VehicleStatusCard
         :vehicle-location="vehicleLocation"
@@ -68,6 +70,15 @@ const props = defineProps({
   carMissionWaypoints: {
     type: Object,
     default: () => ({})
+  },
+  // Add survey state props
+  surveyInProgress: {
+    type: Boolean,
+    default: false
+  },
+  surveyPaused: {
+    type: Boolean,
+    default: false
   },
 
 })

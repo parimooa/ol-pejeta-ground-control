@@ -83,6 +83,8 @@
       :status="status"
       :status-color="statusColor"
       :survey-button-enabled="surveyButtonEnabled"
+      :survey-in-progress="surveyInProgress"
+      :survey-paused="surveyPaused"
       :vehicle-location="vehicleLocation"
       :vehicle-telemetry-data="vehicleData"
       @initiate-survey="initiateSurvey"
@@ -144,6 +146,7 @@ import {
 } from '@/config/constants.js'
 import AnalyticsPage from '@/pages/analytics.vue'
 const surveyInProgress = ref(false)
+const surveyPaused = ref(false)
 
 // Navigation state
 const activeTab = ref(0)
@@ -983,6 +986,7 @@ const fetchCoordinationStatus = async () => {
     isDroneFollowing.value = data.following
     surveyInProgress.value = data.surveying
     surveyButtonEnabled.value = data.survey_button_enabled
+    surveyPaused.value = data.survey_paused
 
     // If survey is in progress, clear the initiation flag
     if (data.surveying) {

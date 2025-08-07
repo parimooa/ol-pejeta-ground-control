@@ -129,6 +129,14 @@ const props = defineProps({
       },
     }),
   },
+  surveyInProgress: {
+    type: Boolean,
+    default: false
+  },
+  surveyPaused: {
+    type: Boolean,
+    default: false
+  },
 })
 
 
@@ -203,6 +211,11 @@ const missionTelemetryDisplay = computed(() => {
 })
 
 const operationalStatus = computed(() => {
+  // Check for survey paused state first
+  if (props.surveyInProgress && props.surveyPaused) {
+    return 'Survey Paused'
+  }
+
   const heartbeat = props.telemetryData?.heartbeat
 
   if (!heartbeat) {
@@ -261,6 +274,8 @@ const operationalStatusColor = computed(() => {
 
   if (status.includes('failed') || status.includes('error')) {
     return 'error'
+  } else if (status.includes('paused')) {
+    return 'warning'
   } else if (status.includes('executing') || status.includes('survey')) {
     return 'success'
   } else if (status.includes('preparing') || status.includes('uploading') || status.includes('starting')) {

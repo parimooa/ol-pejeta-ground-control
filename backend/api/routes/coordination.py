@@ -3,6 +3,7 @@ from typing import Dict, Any
 from backend.services.vehicle_service import vehicle_service
 from backend.api.websockets.telemetry import telemetry_manager
 from backend.services.coordination_service import coordination_service
+from backend.services.survey_service import survey_service
 
 router = APIRouter(prefix="/coordination", tags=["coordination"])
 
@@ -31,6 +32,7 @@ async def get_coordination_status() -> Dict[str, Any]:
         "following": coordination_service.is_following(),
         "surveying": coordination_service.is_surveying(),
         "survey_button_enabled": coordination_service.is_survey_button_enabled(),
+        "survey_paused": survey_service.is_paused,
     }
 
 

@@ -8,6 +8,7 @@ from pymavlink import mavutil
 
 from backend.core.flight_modes import FlightMode
 from .vehicle_service import vehicle_service
+from .analytics_service import analytics_service
 from ..config import CONFIG
 from ..models.waypoint import Waypoint
 
@@ -22,6 +23,161 @@ class SurveyService:
         self.current_waypoint_index = 0
         self.mission_waypoints: List[Waypoint] = []
         self.survey_abandoned = False
+        self.is_paused = False
+        self.survey_in_progress = False
+
+    async def pause_survey(self) -> bool:
+        """Pause the ongoing survey using MAVLink mission pause."""
+        drone_vehicle = vehicle_service.get_vehicle("drone")
+        car_vehicle = vehicle_service.get_vehicle("car")
+        
+        if not drone_vehicle:
+            print("Drone vehicle not available.")
+            return False
+
+        print("Pausing survey using MAVLink mission pause...")
+        self.pause_time = datetime.now()
+
+        # Get positions for analytics
+        drone_pos = drone_vehicle.position()
+        car_pos = car_vehicle.position() if car_vehicle else None
+        distance = -1
+        
+        if drone_pos and car_pos:
+            distance = await self.calculate_distance(
+                {"lat": drone_pos.get("latitude", 0), "lon": drone_pos.get("longitude", 0)},
+                {"lat": car_pos.get("latitude", 0), "lon": car_pos.get("longitude", 0)}
+            )
+
+        # Use set_mode with pause_mission=True to pause the mission
+        success = False
+        if drone_vehicle.set_mode(FlightMode.AUTO, pause_mission=True):
+            self.is_paused = True
+            success = True
+            print("Survey paused successfully.")
+        else:
+            print("Failed to pause survey using MAVLink command.")
+            # Fallback to LOITER mode
+            print("Falling back to LOITER mode...")
+            if drone_vehicle.set_mode(
+                FlightMode.LOITER, loiter_altitude=CONFIG.survey.TAKEOFF_ALTITUDE
+            ):
+                self.is_paused = True
+                success = True
+                print("Survey paused using LOITER mode fallback.")
+            else:
+                print("Failed to pause survey with both methods.")
+
+        # Track analytics event for survey pause
+        if success:
+            analytics_service.track_coordination_event(
+                event_type="survey_pause",
+                distance=distance,
+                drone_pos=drone_pos,
+                car_pos=car_pos,
+                metadata={
+                    "pause_time": self.pause_time.isoformat(),
+                    "reason": "user_requested",
+                    "method": "rest_api"
+                }
+            )
+
+        return success
+
+    async def resume_survey(self) -> bool:
+        """Resume the paused survey."""
+        drone_vehicle = vehicle_service.get_vehicle("drone")
+        car_vehicle = vehicle_service.get_vehicle("car")
+        
+        if not drone_vehicle:
+            print("Drone vehicle not available.")
+            return False
+
+        print("Resuming survey...")
+        self.resume_time = datetime.now()
+        
+        # Calculate pause duration
+        pause_duration_seconds = None
+        if hasattr(self, 'pause_time') and self.pause_time:
+            pause_duration_seconds = (self.resume_time - self.pause_time).total_seconds()
+
+        # Get positions for analytics
+        drone_pos = drone_vehicle.position()
+        car_pos = car_vehicle.position() if car_vehicle else None
+        distance = -1
+        
+        if drone_pos and car_pos:
+            distance = await self.calculate_distance(
+                {"lat": drone_pos.get("latitude", 0), "lon": drone_pos.get("longitude", 0)},
+                {"lat": car_pos.get("latitude", 0), "lon": car_pos.get("longitude", 0)}
+            )
+
+        # Check current armed status and altitude
+        position_data = drone_vehicle.position()
+        is_armed = position_data.get("armed", False)
+        current_altitude = position_data.get("relative_alt", 0)
+        target_altitude = CONFIG.survey.TAKEOFF_ALTITUDE
+
+        print(f"Current state: armed={is_armed}, altitude={current_altitude}m")
+
+        # If not armed, arm the drone
+        if not is_armed:
+            print("Drone not armed - arming...")
+            if not drone_vehicle.arm():
+                print("Failed to arm drone.")
+                return False
+            print("Drone armed successfully.")
+        else:
+            print("Drone already armed.")
+
+        # Check if we need to take off (if altitude is significantly below target)
+        altitude_threshold = 2.0  # meters - consider "on ground" if below this
+        if current_altitude < altitude_threshold:
+            print(f"Taking off to {target_altitude}m...")
+            if not drone_vehicle.takeoff(target_altitude):
+                print("Failed to takeoff.")
+                drone_vehicle.disarm()
+                return False
+            print(f"Takeoff successful to {target_altitude}m.")
+        else:
+            print(
+                f"Already at sufficient altitude ({current_altitude}m), skipping takeoff."
+            )
+
+        # Try to continue the mission using MAVLink continue command
+        success = False
+        print("Attempting to continue mission using MAVLink...")
+        if drone_vehicle.set_mode(FlightMode.AUTO, pause_mission=False):
+            self.is_paused = False
+            success = True
+            print("Survey resumed successfully using MAVLink continue.")
+        else:
+            # Fallback to setting AUTO mode directly
+            print("MAVLink continue failed, falling back to AUTO mode...")
+            if drone_vehicle.set_mode(FlightMode.AUTO):
+                self.is_paused = False
+                success = True
+                print("Survey resumed using AUTO mode fallback.")
+            else:
+                print("Failed to resume survey with both methods.")
+
+        # Track analytics event for survey resume
+        if success:
+            analytics_service.track_coordination_event(
+                event_type="survey_resume",
+                distance=distance,
+                drone_pos=drone_pos,
+                car_pos=car_pos,
+                duration_seconds=pause_duration_seconds,
+                metadata={
+                    "resume_time": self.resume_time.isoformat(),
+                    "pause_duration_seconds": pause_duration_seconds,
+                    "reason": "user_requested",
+                    "method": "rest_api"
+                }
+            )
+
+        return success
 
     @staticmethod
     async def calculate_distance(pos1: Dict, pos2: Dict) -> float:
@@ -121,13 +277,16 @@ class SurveyService:
         max_car_distance: float = 20,
     ) -> bool:
         """Generates a lawnmower pattern and executes it in AUTO mode with car monitoring."""
-        self.survey_abandoned = False  # Reset flag at start of scan
+        self.survey_abandoned = False
+        self.is_paused = False
+        self.survey_in_progress = True
 
         # Get drone vehicle
         drone_vehicle = vehicle_service.get_vehicle("drone")
         car_vehicle = vehicle_service.get_vehicle(car_vehicle_type)
 
         if not drone_vehicle or not car_vehicle:
+            self.survey_in_progress = False
             return False
 
         print("\n--- Generating Lawnmower Scan Pattern ---")
@@ -137,10 +296,7 @@ class SurveyService:
         num_scan_points = len(scan_waypoints)
         print(f"Generated {num_scan_points} waypoints for the scan.")
 
-        # Convert to Waypoint objects for upload
         waypoint_objects = []
-
-        # Add regular waypoints for the scan pattern
         for i, wp in enumerate(scan_waypoints):
             waypoint_objects.append(
                 Waypoint(
@@ -156,7 +312,6 @@ class SurveyService:
                 )
             )
 
-        # Add unlimited loiter waypoint at the end of the scan
         loiter_radius = CONFIG.survey.LOITER_RADIUS_STANDARD
         waypoint_objects.append(
             Waypoint(
@@ -165,18 +320,18 @@ class SurveyService:
                 lon=center_waypoint["lon"],
                 alt=center_waypoint["alt"],
                 command=mavutil.mavlink.MAV_CMD_NAV_LOITER_UNLIM,
-                param1=0,  # Time = 0 for unlimited loiter
-                param2=loiter_radius,  # Loiter radius in meters (positive = clockwise)
-                param3=0,  # Reserved
-                param4=0,  # Exit xtrack location
+                param1=0,
+                param2=loiter_radius,
+                param3=0,
+                param4=0,
             )
         )
 
-        # Upload mission to drone
         print("\n--- Uploading Lawnmower Mission to Drone ---")
         upload_success = drone_vehicle.upload_mission(waypoint_objects)
         if not upload_success:
             print("Failed to upload scan mission to drone.")
+            self.survey_in_progress = False
             return False
 
         print("\n--- Executing Lawnmower Scan in AUTO Mode ---")
@@ -185,26 +340,21 @@ class SurveyService:
                 f"Monitoring car position - will abandon scan if car moves > {max_car_distance}m from waypoint"
             )
 
-        # Switch to AUTO mode to execute the mission
-
         if not drone_vehicle.set_mode(FlightMode.AUTO):
             print("Failed to set drone to AUTO mode.")
+            self.survey_in_progress = False
             return False
 
-        # Start the mission
         if not drone_vehicle.start_mission():
             print("Failed to start drone mission.")
+            self.survey_in_progress = False
             return False
 
         print("Drone executing lawnmower scan mission")
 
-        # Monitor mission progress and car position
-        print("Drone executing scan mission in AUTO mode...")
         scan_start_time = time.time()
-        scan_start_datetime = datetime.now()
         mission_complete = False
 
-        # Store initial car position for monitoring
         initial_car_pos = None
         if car_vehicle:
             initial_car_pos = await car_vehicle.position()
@@ -214,40 +364,35 @@ class SurveyService:
                 )
 
         while time.time() - scan_start_time < timeout:
-            # Check if mission is complete
+            if self.is_paused:
+                scan_start_time += 1
+                await asyncio.sleep(1)
+                continue
+
             if drone_vehicle.is_mission_complete():
                 print("Lawnmower scan completed successfully!")
-                # Automatically switch back to GUIDED mode
                 print("Switching drone back to GUIDED mode...")
                 drone_vehicle.set_mode(FlightMode.GUIDED)
                 mission_complete = True
-
                 break
-            scan_end_datetime = datetime.now()
 
-            # Monitor car position if car_vehicle is provided
             if car_vehicle and initial_car_pos:
                 current_car_pos = await car_vehicle.position()
                 if current_car_pos:
-                    # Calculate distance from initial car position to current car position
                     car_movement_distance = await self.calculate_distance(
                         initial_car_pos, current_car_pos
                     )
 
-                    # Check if car has moved too far from the scan waypoint
                     if car_movement_distance > max_car_distance:
                         print(f"\n🚨 CAR MOVED TOO FAR FROM SCAN WAYPOINT!")
                         print(
                             f"🚗 Car moved {car_movement_distance:.1f}m from scan position (max: {max_car_distance}m)"
                         )
                         print(f"🚁 Abandoning scan...")
-
-                        # Set global flag and switch to GUIDED mode
                         self.survey_abandoned = True
                         drone_vehicle.set_mode(FlightMode.GUIDED)
                         break
                     else:
-                        # Show car monitoring status occasionally
                         elapsed_time = int(time.time() - scan_start_time)
                         if elapsed_time % CONFIG.survey.PROGRESS_UPDATE_INTERVAL == 0:
                             print(
@@ -258,31 +403,24 @@ class SurveyService:
 
             await asyncio.sleep(2)
 
-        # Handle different completion scenarios
         if self.survey_abandoned:
             print(f"\nSCAN ABANDONED - Car moved too far!")
             print("Switching drone to GUIDED mode...")
-
-            # Switch to GUIDED mode immediately
             if not drone_vehicle.set_mode(FlightMode.GUIDED):
                 print("Failed to switch drone to GUIDED mode.")
-                return False
-
-            print("Drone ready to follow car position")
-            return False  # Scan was abandoned
+            self.survey_in_progress = False
+            return False
 
         elif mission_complete:
-            # Mission completed successfully - already switched to GUIDED mode above
             await asyncio.sleep(2)
+            self.survey_in_progress = False
             return True
         else:
-            # Timeout occurred without completion
             print("\nLawnmower scan timed out!")
             print("Switching drone back to GUIDED mode...")
             if not drone_vehicle.set_mode(FlightMode.GUIDED):
                 print("Failed to switch drone back to GUIDED mode.")
-                return False
-            await asyncio.sleep(2)
+            self.survey_in_progress = False
             return False
 
     async def execute_proximity_survey(

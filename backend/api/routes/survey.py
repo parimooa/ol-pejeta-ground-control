@@ -37,6 +37,30 @@ async def start_survey_mission(vehicle_types: List[str] = ["car", "drone"]):
     return {"message": "Survey mission started", "status": "success"}
 
 
+@router.post("/pause")
+async def pause_survey():
+    """Pause the currently running survey."""
+    try:
+        success = await survey_service.pause_survey()
+        if not success:
+            raise HTTPException(status_code=400, detail="Failed to pause survey.")
+        return {"message": "Survey paused successfully", "status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/resume")
+async def resume_survey():
+    """Resume a paused survey."""
+    try:
+        success = await survey_service.resume_survey()
+        if not success:
+            raise HTTPException(status_code=400, detail="Failed to resume survey.")
+        return {"message": "Survey resumed successfully", "status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/waypoint/next")
 async def get_next_waypoint(vehicle_type: str = "car"):
     """Get information about the next waypoint"""
@@ -109,12 +133,19 @@ async def execute_scan(
 async def get_survey_status():
     """Get the current survey mission status"""
     try:
+        # The mission is complete if the survey is not in progress and was not abandoned.
+        mission_complete = (
+            not survey_service.survey_in_progress
+            and not survey_service.survey_abandoned
+        )
+
         return {
+            "survey_in_progress": survey_service.survey_in_progress,
+            "is_paused": survey_service.is_paused,
+            "survey_abandoned": survey_service.survey_abandoned,
+            "mission_complete": mission_complete,
             "current_waypoint_index": survey_service.current_waypoint_index,
             "total_waypoints": len(survey_service.mission_waypoints),
-            "survey_abandoned": survey_service.survey_abandoned,
-            "mission_complete": survey_service.current_waypoint_index
-            >= len(survey_service.mission_waypoints),
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

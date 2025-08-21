@@ -618,7 +618,7 @@ class SurveyService:
         }
 
     async def move_to_next_waypoint(self, vehicle_type: str = "car") -> bool:
-        """Move vehicle to the next waypoint"""
+        """Move the vehicle to the next waypoint"""
         vehicle = vehicle_service.get_vehicle(vehicle_type)
         if not vehicle or self.current_waypoint_index >= len(self.mission_waypoints):
             return False

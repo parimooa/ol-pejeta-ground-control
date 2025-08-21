@@ -8,7 +8,7 @@ import math
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, asdict
 from collections import defaultdict
 from backend.config import CONFIG
@@ -99,7 +99,7 @@ class MissionEffectivenessMetric:
 
     timestamp: str
     mission_id: str
-    mission_type: str  # survey, patrol, coordination
+    mission_type: str  # survey,  coordination
 
     # Time and Resource Usage (required fields first)
     mission_duration_seconds: float
@@ -142,6 +142,54 @@ class SafetyEvent:
     resolution_method: Optional[str] = None
 
 
+@dataclass
+class ProximityDataPoint:
+    """Proximity data point for heatmap generation"""
+
+    timestamp: str
+    # Position data
+    drone_latitude: float
+    drone_longitude: float
+    drone_altitude: float
+    rover_latitude: float
+    rover_longitude: float
+    rover_altitude: float
+    
+    # Proximity metrics
+    distance_meters: float
+    proximity_zone: str  # close (<50m), medium (50-100m), far (100-200m), distant (>200m)
+    
+    # Operational context
+    drone_activity_state: str  # idle, following, surveying, returning
+    rover_activity_state: str  # stationary, moving, surveying
+    survey_active: bool
+    survey_paused: bool
+    
+    # Environmental context
+    terrain_type: Optional[str] = None  # grassland, forest, wetland, rocky
+    weather_condition: Optional[str] = None  # clear, cloudy, windy, rainy
+    time_of_day: Optional[str] = None  # dawn, day, dusk, night
+    
+    # Technical metrics
+    drone_ground_speed: Optional[float] = None
+    rover_ground_speed: Optional[float] = None
+    drone_battery_percentage: Optional[float] = None
+    communication_quality: Optional[float] = None  # 0-100 signal strength
+    
+    # Grid binning for heatmap
+    grid_cell_x: Optional[int] = None
+    grid_cell_y: Optional[int] = None
+    grid_resolution_meters: Optional[float] = None
+    
+    # Scenario-specific context for coordination analysis
+    scenario_type: Optional[str] = None  # "waypoint_following", "stationary_activation", "survey_abandonment"
+    coordination_active: Optional[bool] = None
+    survey_phase: Optional[str] = None  # "approaching", "active", "abandoned", "completed"
+    car_movement_state: Optional[str] = None  # "stationary", "waypoint_transit", "moving_away"
+    waypoint_sequence: Optional[int] = None  # Current waypoint being approached
+    distance_threshold_status: Optional[str] = None  # "safe", "proximity", "warning", "critical"
+
+
 class AnalyticsService:
     def __init__(self):
         self.analytics_dir = Path(CONFIG.directories.ANALYTICS_DATA)
@@ -157,6 +205,7 @@ class AnalyticsService:
             self.analytics_dir / "mission_effectiveness.json"
         )
         self.safety_events_file = self.analytics_dir / "safety_events.json"
+        self.proximity_data_file = self.analytics_dir / "proximity_data.json"
 
         # In-memory storage for real-time metrics
         self.coordination_events: List[CoordinationEvent] = []
@@ -165,6 +214,7 @@ class AnalyticsService:
         self.vehicle_telemetry: List[VehicleTelemetryMetric] = []
         self.mission_effectiveness: List[MissionEffectivenessMetric] = []
         self.safety_events: List[SafetyEvent] = []
+        self.proximity_data: List[ProximityDataPoint] = []
 
         # Tracking state
         self.current_session_start = datetime.now()
@@ -255,6 +305,13 @@ class AnalyticsService:
                     safety_data = json.load(f)
                     self.safety_events = [SafetyEvent(**event) for event in safety_data]
                 print(f"Loaded {len(self.safety_events)} safety events from disk")
+
+            # Load proximity data
+            if self.proximity_data_file.exists():
+                with open(self.proximity_data_file, "r") as f:
+                    proximity_data = json.load(f)
+                    self.proximity_data = [ProximityDataPoint(**data) for data in proximity_data]
+                print(f"Loaded {len(self.proximity_data)} proximity data points from disk")
 
         except Exception as e:
             print(f"Error loading persisted analytics data: {e}")
@@ -456,6 +513,341 @@ class AnalyticsService:
 
         self.safety_events.append(safety_event)
         self._maybe_persist_data()
+
+    def track_proximity_data(
+        self,
+        drone_pos: Dict[str, float],
+        rover_pos: Dict[str, float],
+        distance_meters: float,
+        drone_activity_state: str,
+        rover_activity_state: str,
+        survey_active: bool = False,
+        survey_paused: bool = False,
+        **kwargs,
+    ):
+        """Track proximity data for heatmap generation"""
+        
+        # Calculate proximity zone
+        if distance_meters < 50:
+            proximity_zone = "close"
+        elif distance_meters < 100:
+            proximity_zone = "medium"
+        elif distance_meters < 200:
+            proximity_zone = "far"
+        else:
+            proximity_zone = "distant"
+        
+        # Detect scenario type and context
+        scenario_type, survey_phase, car_movement_state, distance_threshold_status = self._analyze_coordination_scenario(
+            distance_meters, drone_activity_state, rover_activity_state, survey_active, survey_paused, 
+            rover_pos.get("ground_speed", 0), kwargs
+        )
+        
+        # Calculate grid binning (optional - can be set via kwargs)
+        grid_resolution = kwargs.get("grid_resolution_meters", 25.0)  # 25m grid cells
+        
+        # Use rover position as reference for grid
+        ref_lat = rover_pos.get("latitude", 0)
+        ref_lng = rover_pos.get("longitude", 0)
+        
+        # Simple grid calculation (could be enhanced with proper projection)
+        grid_x = int((drone_pos.get("longitude", 0) - ref_lng) * 111000 / grid_resolution)
+        grid_y = int((drone_pos.get("latitude", 0) - ref_lat) * 111000 / grid_resolution)
+        
+        proximity_point = ProximityDataPoint(
+            timestamp=datetime.now().isoformat(),
+            # Position data
+            drone_latitude=drone_pos.get("latitude", 0.0),
+            drone_longitude=drone_pos.get("longitude", 0.0),
+            drone_altitude=drone_pos.get("altitude_msl", 0.0),
+            rover_latitude=rover_pos.get("latitude", 0.0),
+            rover_longitude=rover_pos.get("longitude", 0.0),
+            rover_altitude=rover_pos.get("altitude_msl", 0.0),
+            # Proximity metrics
+            distance_meters=distance_meters,
+            proximity_zone=proximity_zone,
+            # Operational context
+            drone_activity_state=drone_activity_state,
+            rover_activity_state=rover_activity_state,
+            survey_active=survey_active,
+            survey_paused=survey_paused,
+            # Environmental context
+            terrain_type=kwargs.get("terrain_type"),
+            weather_condition=kwargs.get("weather_condition"),
+            time_of_day=self._get_time_of_day(),
+            # Technical metrics
+            drone_ground_speed=drone_pos.get("ground_speed"),
+            rover_ground_speed=rover_pos.get("ground_speed"),
+            drone_battery_percentage=drone_pos.get("battery_remaining_percentage"),
+            communication_quality=kwargs.get("communication_quality"),
+            # Grid binning
+            grid_cell_x=grid_x,
+            grid_cell_y=grid_y,
+            grid_resolution_meters=grid_resolution,
+            # Scenario-specific context
+            scenario_type=scenario_type,
+            coordination_active=kwargs.get("coordination_active", False),
+            survey_phase=survey_phase,
+            car_movement_state=car_movement_state,
+            waypoint_sequence=kwargs.get("current_waypoint_seq"),
+            distance_threshold_status=distance_threshold_status,
+        )
+        
+        self.proximity_data.append(proximity_point)
+        self._maybe_persist_data()
+
+    def _analyze_coordination_scenario(
+        self, 
+        distance_meters: float, 
+        drone_activity_state: str, 
+        rover_activity_state: str, 
+        survey_active: bool, 
+        survey_paused: bool,
+        rover_speed: float,
+        kwargs: Dict
+    ) -> Tuple[str, str, str, str]:
+        """Analyze current coordination scenario and determine context"""
+        
+        # Determine distance threshold status
+        if distance_meters < 50:
+            distance_threshold_status = "safe"
+        elif distance_meters < 100:
+            distance_threshold_status = "proximity"
+        elif distance_meters < 500:
+            distance_threshold_status = "warning"
+        else:
+            distance_threshold_status = "critical"
+        
+        # Determine car movement state
+        if rover_speed < 0.5:
+            car_movement_state = "stationary"
+        elif rover_activity_state == "surveying" or kwargs.get("near_waypoint", False):
+            car_movement_state = "waypoint_transit"
+        else:
+            car_movement_state = "moving_away"
+        
+        # Determine survey phase
+        if not survey_active and not survey_paused:
+            if drone_activity_state == "following":
+                survey_phase = "approaching"
+            else:
+                survey_phase = "idle"
+        elif survey_active:
+            survey_phase = "active"
+        elif survey_paused:
+            survey_phase = "paused"
+        elif kwargs.get("survey_abandoned", False):
+            survey_phase = "abandoned"
+        else:
+            survey_phase = "completed"
+        
+        # Determine scenario type based on context
+        if survey_phase in ["active", "abandoned"] or kwargs.get("survey_abandoned", False):
+            scenario_type = "survey_abandonment"
+        elif car_movement_state == "stationary" and drone_activity_state in ["following", "idle"]:
+            scenario_type = "stationary_activation"
+        elif kwargs.get("near_waypoint", False) or car_movement_state == "waypoint_transit":
+            scenario_type = "waypoint_following"
+        elif drone_activity_state == "following" and car_movement_state == "moving":
+            scenario_type = "waypoint_following"
+        else:
+            scenario_type = "general_coordination"
+        
+        return scenario_type, survey_phase, car_movement_state, distance_threshold_status
+
+    def get_scenario_data(self, scenario_type: str = None, hours_back: int = 24) -> Dict[str, Any]:
+        """Get proximity data filtered by scenario type for visualization"""
+        cutoff_time = datetime.now() - timedelta(hours=hours_back)
+        recent_data = [
+            d for d in self.proximity_data
+            if datetime.fromisoformat(d.timestamp) > cutoff_time
+        ]
+        
+        # Filter by scenario type if specified
+        if scenario_type:
+            recent_data = [d for d in recent_data if d.scenario_type == scenario_type]
+        
+        if not recent_data:
+            return {"error": f"No data found for scenario: {scenario_type}" if scenario_type else "No recent data found"}
+        
+        # Group data by scenario type
+        scenario_groups = defaultdict(list)
+        for point in recent_data:
+            scenario_groups[point.scenario_type or "unknown"].append(point)
+        
+        result = {
+            "time_period_hours": hours_back,
+            "total_data_points": len(recent_data),
+            "scenario_breakdown": {scenario: len(points) for scenario, points in scenario_groups.items()},
+            "scenarios": {}
+        }
+        
+        # Process each scenario
+        for scenario, points in scenario_groups.items():
+            if not points:
+                continue
+                
+            # Calculate scenario-specific metrics
+            distances = [p.distance_meters for p in points]
+            times = [datetime.fromisoformat(p.timestamp) for p in points]
+            
+            # Phase analysis
+            phase_breakdown = defaultdict(int)
+            threshold_breakdown = defaultdict(int)
+            movement_breakdown = defaultdict(int)
+            
+            for point in points:
+                if point.survey_phase:
+                    phase_breakdown[point.survey_phase] += 1
+                if point.distance_threshold_status:
+                    threshold_breakdown[point.distance_threshold_status] += 1
+                if point.car_movement_state:
+                    movement_breakdown[point.car_movement_state] += 1
+            
+            # Extract coordinates for plotting
+            drone_positions = [(p.drone_latitude, p.drone_longitude) for p in points]
+            car_positions = [(p.rover_latitude, p.rover_longitude) for p in points]
+            
+            result["scenarios"][scenario] = {
+                "data_points": len(points),
+                "time_range": {
+                    "start": min(times).isoformat(),
+                    "end": max(times).isoformat(),
+                    "duration_minutes": (max(times) - min(times)).total_seconds() / 60
+                },
+                "distance_stats": {
+                    "min": min(distances),
+                    "max": max(distances),
+                    "avg": sum(distances) / len(distances),
+                    "critical_threshold_violations": len([d for d in distances if d > 500])
+                },
+                "phase_breakdown": dict(phase_breakdown),
+                "threshold_breakdown": dict(threshold_breakdown),
+                "movement_breakdown": dict(movement_breakdown),
+                "positions": {
+                    "drone": drone_positions,
+                    "car": car_positions,
+                    "distances": distances,
+                    "timestamps": [p.timestamp for p in points]
+                }
+            }
+        
+        return result
+
+    def get_proximity_heatmap_data(
+        self, 
+        hours_back: int = 24,
+        grid_resolution: float = 25.0,
+        proximity_filter: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Get proximity data aggregated for heatmap visualization"""
+        cutoff_time = datetime.now() - timedelta(hours=hours_back)
+        recent_data = [
+            d for d in self.proximity_data
+            if datetime.fromisoformat(d.timestamp) > cutoff_time
+        ]
+        
+        # Apply proximity filter if specified
+        if proximity_filter:
+            recent_data = [d for d in recent_data if d.proximity_zone == proximity_filter]
+        
+        if not recent_data:
+            return {"error": "No proximity data found for this period"}
+        
+        # Aggregate data by grid cells
+        grid_aggregation = defaultdict(lambda: {
+            "count": 0,
+            "total_time_seconds": 0,
+            "avg_distance": 0,
+            "activity_breakdown": defaultdict(int),
+            "survey_time": 0,
+            "positions": []
+        })
+        
+        # Sort data by timestamp for time calculations
+        sorted_data = sorted(recent_data, key=lambda x: x.timestamp)
+        
+        for i, point in enumerate(sorted_data):
+            grid_key = f"{point.grid_cell_x},{point.grid_cell_y}"
+            cell_data = grid_aggregation[grid_key]
+            
+            cell_data["count"] += 1
+            cell_data["avg_distance"] += point.distance_meters
+            cell_data["activity_breakdown"][point.drone_activity_state] += 1
+            cell_data["positions"].append({
+                "lat": point.drone_latitude,
+                "lng": point.drone_longitude,
+                "distance": point.distance_meters,
+                "timestamp": point.timestamp
+            })
+            
+            if point.survey_active:
+                cell_data["survey_time"] += 1  # Count of survey-active points
+            
+            # Calculate time duration (approximate from data frequency)
+            if i > 0:
+                prev_time = datetime.fromisoformat(sorted_data[i-1].timestamp)
+                curr_time = datetime.fromisoformat(point.timestamp)
+                time_diff = (curr_time - prev_time).total_seconds()
+                if time_diff < 60:  # Only count if less than 1 minute gap
+                    cell_data["total_time_seconds"] += time_diff
+        
+        # Process aggregated data
+        heatmap_cells = []
+        for grid_key, data in grid_aggregation.items():
+            x, y = map(int, grid_key.split(','))
+            
+            # Calculate center position of grid cell
+            center_lat = data["positions"][0]["lat"] if data["positions"] else 0
+            center_lng = data["positions"][0]["lng"] if data["positions"] else 0
+            
+            # Calculate averages
+            avg_distance = data["avg_distance"] / data["count"] if data["count"] > 0 else 0
+            
+            heatmap_cells.append({
+                "grid_x": x,
+                "grid_y": y,
+                "center_lat": center_lat,
+                "center_lng": center_lng,
+                "count": data["count"],
+                "total_time_seconds": data["total_time_seconds"],
+                "avg_distance_meters": round(avg_distance, 1),
+                "survey_time_ratio": data["survey_time"] / data["count"] if data["count"] > 0 else 0,
+                "primary_activity": max(data["activity_breakdown"], key=data["activity_breakdown"].get) if data["activity_breakdown"] else "unknown",
+                "activity_breakdown": dict(data["activity_breakdown"]),
+                "density_score": data["count"] * (data["total_time_seconds"] / 60)  # count * minutes
+            })
+        
+        # Sort by density for visualization
+        heatmap_cells.sort(key=lambda x: x["density_score"], reverse=True)
+        
+        # Calculate summary statistics
+        total_points = len(recent_data)
+        total_time = sum(cell["total_time_seconds"] for cell in heatmap_cells)
+        
+        proximity_zone_counts = defaultdict(int)
+        activity_counts = defaultdict(int)
+        
+        for point in recent_data:
+            proximity_zone_counts[point.proximity_zone] += 1
+            activity_counts[point.drone_activity_state] += 1
+        
+        return {
+            "time_period_hours": hours_back,
+            "grid_resolution_meters": grid_resolution,
+            "total_data_points": total_points,
+            "total_time_tracked_seconds": round(total_time, 1),
+            "grid_cells_count": len(heatmap_cells),
+            "proximity_zone_breakdown": dict(proximity_zone_counts),
+            "activity_breakdown": dict(activity_counts),
+            "heatmap_cells": heatmap_cells[:100],  # Limit to top 100 cells for performance
+            "summary_stats": {
+                "avg_distance_all": round(sum(d.distance_meters for d in recent_data) / len(recent_data), 1) if recent_data else 0,
+                "min_distance": min(d.distance_meters for d in recent_data) if recent_data else 0,
+                "max_distance": max(d.distance_meters for d in recent_data) if recent_data else 0,
+                "survey_active_ratio": len([d for d in recent_data if d.survey_active]) / len(recent_data) if recent_data else 0
+            }
+        }
 
     def _estimate_power_consumption(
         self, vehicle_type: str, ground_speed: float, flight_mode: int
@@ -882,6 +1274,10 @@ class AnalyticsService:
             with open(self.safety_events_file, "w") as f:
                 json.dump([asdict(event) for event in self.safety_events], f, indent=2)
 
+            # Save proximity data
+            with open(self.proximity_data_file, "w") as f:
+                json.dump([asdict(data) for data in self.proximity_data], f, indent=2)
+
             print(
                 f"Enhanced analytics data persisted to disk at {datetime.now().isoformat()}"
             )
@@ -902,6 +1298,7 @@ class AnalyticsService:
         self.vehicle_telemetry.clear()
         self.mission_effectiveness.clear()
         self.safety_events.clear()
+        self.proximity_data.clear()
         self.mission_stats = {
             "total_missions": 0,
             "completed_missions": 0,

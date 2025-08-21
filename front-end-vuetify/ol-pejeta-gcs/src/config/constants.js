@@ -59,6 +59,16 @@ export const MAP_CONSTANTS = {
   MAP_EXTENT_OFFSET: 500,     // Offset for map extent calculations
 }
 
+// Compass component constants
+export const COMPASS_CONSTANTS = {
+  SIZE_DESKTOP: 120,          // Compass size in pixels for desktop
+  SIZE_MOBILE: 100,           // Compass size in pixels for mobile
+  NEEDLE_TRANSITION_MS: 300,  // Smooth transition duration for needle rotation
+  UPDATE_THROTTLE_MS: 100,    // Throttle compass updates to prevent jitter
+  CARDINAL_DIRECTIONS: ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'],
+  DEGREE_STEP: 22.5,          // Degrees per cardinal direction step
+}
+
 // HTTP status codes
 export const HTTP_CONSTANTS = {
   OK: 200,                    // HTTP OK status

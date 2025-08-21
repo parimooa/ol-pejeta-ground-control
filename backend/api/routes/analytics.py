@@ -531,6 +531,150 @@ async def get_mission_effectiveness_analysis(hours_back: int = Query(24, ge=1, l
         )
 
 
+@router.get("/proximity-heatmap")
+async def get_proximity_heatmap_data(
+    hours_back: int = Query(24, ge=1, le=168),
+    grid_resolution: float = Query(25.0, ge=10.0, le=100.0),
+    proximity_filter: Optional[str] = Query(None, regex="^(close|medium|far|distant)$")
+):
+    """
+    Get proximity data aggregated for heatmap visualization
+    """
+    try:
+        return analytics_service.get_proximity_heatmap_data(
+            hours_back=hours_back,
+            grid_resolution=grid_resolution,
+            proximity_filter=proximity_filter
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get proximity heatmap data: {str(e)}"
+        )
+
+
+@router.get("/proximity-analytics")
+async def get_proximity_analytics(hours_back: int = Query(24, ge=1, le=168)):
+    """
+    Get detailed proximity analytics for research analysis
+    """
+    try:
+        cutoff_time = datetime.now() - timedelta(hours=hours_back)
+        recent_data = [
+            d for d in analytics_service.proximity_data
+            if datetime.fromisoformat(d.timestamp) > cutoff_time
+        ]
+        
+        if not recent_data:
+            return {"error": "No proximity data found for this period"}
+        
+        # Activity state analysis
+        activity_analysis = {}
+        drone_states = {}
+        rover_states = {}
+        
+        for point in recent_data:
+            # Count drone activity states
+            drone_state = point.drone_activity_state
+            if drone_state not in drone_states:
+                drone_states[drone_state] = {"count": 0, "total_distance": 0}
+            drone_states[drone_state]["count"] += 1
+            drone_states[drone_state]["total_distance"] += point.distance_meters
+            
+            # Count rover activity states
+            rover_state = point.rover_activity_state
+            if rover_state not in rover_states:
+                rover_states[rover_state] = {"count": 0, "total_distance": 0}
+            rover_states[rover_state]["count"] += 1
+            rover_states[rover_state]["total_distance"] += point.distance_meters
+        
+        # Calculate averages
+        for state_data in drone_states.values():
+            state_data["avg_distance"] = round(state_data["total_distance"] / state_data["count"], 1)
+        for state_data in rover_states.values():
+            state_data["avg_distance"] = round(state_data["total_distance"] / state_data["count"], 1)
+        
+        # Time-based analysis
+        time_periods = {
+            "dawn": [],
+            "day": [],
+            "dusk": [],
+            "night": []
+        }
+        
+        for point in recent_data:
+            time_period = point.time_of_day or "unknown"
+            if time_period in time_periods:
+                time_periods[time_period].append(point)
+        
+        time_analysis = {}
+        for period, points in time_periods.items():
+            if points:
+                avg_distance = sum(p.distance_meters for p in points) / len(points)
+                survey_active_count = len([p for p in points if p.survey_active])
+                time_analysis[period] = {
+                    "data_points": len(points),
+                    "avg_distance_meters": round(avg_distance, 1),
+                    "min_distance_meters": round(min(p.distance_meters for p in points), 1),
+                    "max_distance_meters": round(max(p.distance_meters for p in points), 1),
+                    "survey_active_ratio": round(survey_active_count / len(points), 2) if points else 0
+                }
+        
+        # Communication quality analysis
+        comm_quality_points = [p for p in recent_data if p.communication_quality is not None]
+        comm_analysis = {}
+        if comm_quality_points:
+            comm_values = [p.communication_quality for p in comm_quality_points]
+            comm_analysis = {
+                "data_points": len(comm_quality_points),
+                "avg_signal_strength": round(sum(comm_values) / len(comm_values), 1),
+                "min_signal_strength": round(min(comm_values), 1),
+                "max_signal_strength": round(max(comm_values), 1),
+                "quality_vs_distance_correlation": _calculate_correlation(
+                    [p.communication_quality for p in comm_quality_points],
+                    [p.distance_meters for p in comm_quality_points]
+                )
+            }
+        
+        # Proximity zone distribution
+        zone_counts = {}
+        for point in recent_data:
+            zone = point.proximity_zone
+            if zone not in zone_counts:
+                zone_counts[zone] = {"count": 0, "survey_time": 0}
+            zone_counts[zone]["count"] += 1
+            if point.survey_active:
+                zone_counts[zone]["survey_time"] += 1
+        
+        # Calculate percentages
+        total_points = len(recent_data)
+        for zone_data in zone_counts.values():
+            zone_data["percentage"] = round(zone_data["count"] / total_points * 100, 1)
+            zone_data["survey_ratio"] = round(zone_data["survey_time"] / zone_data["count"], 2) if zone_data["count"] > 0 else 0
+        
+        return {
+            "time_period_hours": hours_back,
+            "total_data_points": total_points,
+            "drone_activity_analysis": drone_states,
+            "rover_activity_analysis": rover_states,
+            "time_of_day_analysis": time_analysis,
+            "proximity_zone_distribution": zone_counts,
+            "communication_analysis": comm_analysis,
+            "summary_stats": {
+                "avg_distance_all_meters": round(sum(d.distance_meters for d in recent_data) / len(recent_data), 1),
+                "closest_approach_meters": round(min(d.distance_meters for d in recent_data), 1),
+                "farthest_distance_meters": round(max(d.distance_meters for d in recent_data), 1),
+                "survey_active_ratio": len([d for d in recent_data if d.survey_active]) / len(recent_data) if recent_data else 0,
+                "survey_paused_ratio": len([d for d in recent_data if d.survey_paused]) / len(recent_data) if recent_data else 0,
+                "unique_grid_cells": len(set(f"{d.grid_cell_x},{d.grid_cell_y}" for d in recent_data if d.grid_cell_x is not None))
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get proximity analytics: {str(e)}"
+        )
+
+
 @router.get("/safety-events")
 async def get_safety_events_summary(hours_back: int = Query(24, ge=1, le=168)):
     """
@@ -634,6 +778,26 @@ def _get_recent_events(limit: int = 50) -> List[Dict]:
         }
         for event in recent_events
     ]
+
+
+def _calculate_correlation(x_values: List[float], y_values: List[float]) -> float:
+    """Calculate simple correlation coefficient between two datasets"""
+    if len(x_values) != len(y_values) or len(x_values) < 2:
+        return 0.0
+    
+    n = len(x_values)
+    x_mean = sum(x_values) / n
+    y_mean = sum(y_values) / n
+    
+    numerator = sum((x - x_mean) * (y - y_mean) for x, y in zip(x_values, y_values))
+    x_var = sum((x - x_mean) ** 2 for x in x_values)
+    y_var = sum((y - y_mean) ** 2 for y in y_values)
+    
+    if x_var == 0 or y_var == 0:
+        return 0.0
+    
+    correlation = numerator / (x_var * y_var) ** 0.5
+    return round(correlation, 3)
 
 
 def _convert_to_csv(export_data: Dict) -> str:

@@ -11,6 +11,7 @@ declare module 'vue' {
     AnalyticsDashboard: typeof import('./src/components/AnalyticsDashboard.vue')['default']
     AppFooter: typeof import('./src/components/AppFooter.vue')['default']
     AppHeader: typeof import('./src/components/AppHeader.vue')['default']
+    CompassIndicator: typeof import('./src/components/CompassIndicator.vue')['default']
     DistanceStatusCard: typeof import('./src/components/info-panel/DistanceStatusCard.vue')['default']
     DroneStatusCard: typeof import('./src/components/info-panel/DroneStatusCard.vue')['default']
     DroneStatusCard1: typeof import('./src/components/panels/DroneStatusCard1.vue')['default']

@@ -327,6 +327,10 @@ class CoordinationService:
 
             if self._telemetry_counter % 5 == 0:  # Track every 5th loop iteration
                 self._track_vehicle_telemetry(drone, car, distance)
+            
+            # Track proximity data for heatmap (when distance < 500m for meaningful data)
+            if distance <= 500:
+                self._track_proximity_data(drone, car, distance, is_surveying)
 
             # --- COORDINATION LOGIC ---
             # When coordination is active:
@@ -634,6 +638,80 @@ class CoordinationService:
             "latency": latency,
             "packet_loss": packet_loss,
         }
+
+    def _track_proximity_data(self, drone: "Vehicle", car: "Vehicle", distance: float, is_surveying: bool):
+        """Track proximity data for heatmap analysis"""
+        try:
+            drone_pos = drone.position()
+            car_pos = car.position()
+            
+            if not drone_pos.get("latitude") or not car_pos.get("latitude"):
+                return
+            
+            # Determine activity states
+            drone_activity_state = "surveying" if is_surveying else ("following" if self._is_following else "idle")
+            
+            # Estimate rover activity based on ground speed
+            rover_speed = car_pos.get("ground_speed", 0)
+            if rover_speed > 1.0:
+                rover_activity_state = "moving"
+            elif is_surveying:
+                rover_activity_state = "surveying"
+            else:
+                rover_activity_state = "stationary"
+            
+            # Get communication quality
+            comm_quality = self._estimate_communication_quality(drone_pos)
+            
+            # Determine if car is near a waypoint
+            near_waypoint = self._is_near_waypoint(car, car_pos)
+            
+            # Track the proximity data point with enhanced scenario context
+            analytics_service.track_proximity_data(
+                drone_pos=drone_pos,
+                rover_pos=car_pos,
+                distance_meters=distance,
+                drone_activity_state=drone_activity_state,
+                rover_activity_state=rover_activity_state,
+                survey_active=is_surveying,
+                survey_paused=survey_service.is_paused,
+                # Additional context
+                terrain_type="grassland",  # Could be enhanced with GIS data
+                weather_condition="clear",  # Could be enhanced with weather API
+                communication_quality=comm_quality["signal_strength"],
+                # Scenario-specific context
+                coordination_active=self._is_active,
+                current_waypoint_seq=car_pos.get("current_mission_wp_seq"),
+                near_waypoint=near_waypoint,
+                survey_abandoned=getattr(survey_service, 'survey_abandoned', False),
+            )
+            
+        except Exception as e:
+            print(f"Error tracking proximity data: {e}")
+
+    def _is_near_waypoint(self, car: "Vehicle", car_pos: dict) -> bool:
+        """Check if car is near its current target waypoint"""
+        try:
+            current_wp_seq = car_pos.get("current_mission_wp_seq")
+            if current_wp_seq is None or not car.mission_waypoints:
+                return False
+            
+            target_wp = car.mission_waypoints.get(current_wp_seq)
+            if not target_wp:
+                return False
+            
+            # Calculate distance to target waypoint
+            waypoint_pos = {
+                "latitude": target_wp.get("lat"),
+                "longitude": target_wp.get("lon"),
+            }
+            distance_to_waypoint = self._calculate_distance(car_pos, waypoint_pos)
+            
+            # Consider "near" if within 20 meters of waypoint
+            return distance_to_waypoint != -1 and distance_to_waypoint < 20
+            
+        except Exception:
+            return False
 
     def _track_mission_effectiveness(
         self, drone: "Vehicle", car: "Vehicle", duration_seconds: float, abandoned: bool

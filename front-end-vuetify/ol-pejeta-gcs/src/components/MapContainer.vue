@@ -148,6 +148,16 @@
       </div>
     </div>
 
+    <!-- Compass Indicator - Left Side -->
+    <div class="compass-indicator">
+      <CompassIndicator
+        :vehicle-telemetry-data="vehicleTelemetryData"
+        :drone-telemetry-data="droneTelemetryData"
+        :is-vehicle-connected="isVehicleConnected"
+        :is-drone-connected="isDroneConnected"
+      />
+    </div>
+
     <!-- Offline Map Dialog -->
     <v-dialog v-model="showOfflineDialog" max-width="600" persistent>
       <v-card>
@@ -384,6 +394,7 @@ import * as ol from 'ol/extent'
 
 import droneIcon from '@/assets/drone.png'
 import vehicleIcon from '@/assets/car_top_view.png'
+import CompassIndicator from '@/components/CompassIndicator.vue'
 import {
   API_CONSTANTS,
   TIMING_CONSTANTS,
@@ -1509,5 +1520,29 @@ onUnmounted(() => {
 .warning-bg {
   background-color: rgba(255, 193, 7, 0.15);
   border: 1px solid rgba(255, 193, 7, 0.3);
+}
+
+/* Compass Indicator Positioning */
+.compass-indicator {
+  position: absolute;
+  left: 16px;
+  top: calc(var(--v-layout-top, 64px) + 120px);
+  z-index: 2;
+  pointer-events: auto;
+}
+
+/* Responsive compass positioning */
+@media (max-width: 768px) {
+  .compass-indicator {
+    left: 12px;
+    top: calc(var(--v-layout-top, 64px) + 100px);
+  }
+}
+
+@media (max-width: 480px) {
+  .compass-indicator {
+    left: 8px;
+    top: calc(var(--v-layout-top, 64px) + 80px);
+  }
 }
 </style>

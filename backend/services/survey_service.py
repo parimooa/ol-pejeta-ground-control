@@ -30,7 +30,7 @@ class SurveyService:
         """Pause the ongoing survey using MAVLink mission pause."""
         drone_vehicle = vehicle_service.get_vehicle("drone")
         car_vehicle = vehicle_service.get_vehicle("car")
-        
+
         if not drone_vehicle:
             print("Drone vehicle not available.")
             return False
@@ -42,11 +42,14 @@ class SurveyService:
         drone_pos = drone_vehicle.position()
         car_pos = car_vehicle.position() if car_vehicle else None
         distance = -1
-        
+
         if drone_pos and car_pos:
             distance = await self.calculate_distance(
-                {"lat": drone_pos.get("latitude", 0), "lon": drone_pos.get("longitude", 0)},
-                {"lat": car_pos.get("latitude", 0), "lon": car_pos.get("longitude", 0)}
+                {
+                    "lat": drone_pos.get("latitude", 0),
+                    "lon": drone_pos.get("longitude", 0),
+                },
+                {"lat": car_pos.get("latitude", 0), "lon": car_pos.get("longitude", 0)},
             )
 
         # Use set_mode with pause_mission=True to pause the mission
@@ -78,8 +81,8 @@ class SurveyService:
                 metadata={
                     "pause_time": self.pause_time.isoformat(),
                     "reason": "user_requested",
-                    "method": "rest_api"
-                }
+                    "method": "rest_api",
+                },
             )
 
         return success
@@ -88,28 +91,33 @@ class SurveyService:
         """Resume the paused survey."""
         drone_vehicle = vehicle_service.get_vehicle("drone")
         car_vehicle = vehicle_service.get_vehicle("car")
-        
+
         if not drone_vehicle:
             print("Drone vehicle not available.")
             return False
 
         print("Resuming survey...")
         self.resume_time = datetime.now()
-        
+
         # Calculate pause duration
         pause_duration_seconds = None
-        if hasattr(self, 'pause_time') and self.pause_time:
-            pause_duration_seconds = (self.resume_time - self.pause_time).total_seconds()
+        if hasattr(self, "pause_time") and self.pause_time:
+            pause_duration_seconds = (
+                self.resume_time - self.pause_time
+            ).total_seconds()
 
         # Get positions for analytics
         drone_pos = drone_vehicle.position()
         car_pos = car_vehicle.position() if car_vehicle else None
         distance = -1
-        
+
         if drone_pos and car_pos:
             distance = await self.calculate_distance(
-                {"lat": drone_pos.get("latitude", 0), "lon": drone_pos.get("longitude", 0)},
-                {"lat": car_pos.get("latitude", 0), "lon": car_pos.get("longitude", 0)}
+                {
+                    "lat": drone_pos.get("latitude", 0),
+                    "lon": drone_pos.get("longitude", 0),
+                },
+                {"lat": car_pos.get("latitude", 0), "lon": car_pos.get("longitude", 0)},
             )
 
         # Check current armed status and altitude
@@ -173,8 +181,8 @@ class SurveyService:
                     "resume_time": self.resume_time.isoformat(),
                     "pause_duration_seconds": pause_duration_seconds,
                     "reason": "user_requested",
-                    "method": "rest_api"
-                }
+                    "method": "rest_api",
+                },
             )
 
         return success

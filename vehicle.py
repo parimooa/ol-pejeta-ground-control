@@ -6,6 +6,7 @@ from enum import Enum
 from pymavlink import mavutil, mavwp
 
 
+# This is a test script for testing the module , not getting used anywhere
 class FlightMode(Enum):
     STABILIZE = 0
     GUIDED = 4

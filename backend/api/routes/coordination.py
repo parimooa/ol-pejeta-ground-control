@@ -1,7 +1,7 @@
-from fastapi import APIRouter
 from typing import Dict, Any
-from backend.services.vehicle_service import vehicle_service
-from backend.api.websockets.telemetry import telemetry_manager
+
+from fastapi import APIRouter
+
 from backend.services.coordination_service import coordination_service
 from backend.services.survey_service import survey_service
 

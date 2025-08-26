@@ -5,6 +5,7 @@ from typing import List, Optional, Dict, Any
 from backend.config import CONFIG
 
 
+# TODO Merge with survey_service.py
 class WaypointFileService:
     def __init__(self):
         self.surveyed_area_dir = Path(CONFIG.directories.SURVEYED_AREA)

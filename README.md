@@ -1,8 +1,8 @@
-# Ol Pejeta Ground Control System
+# Ground Control System to air coordination system
 
 A comprehensive drone-car coordination and ground control system designed for autonomous vehicle operations in wildlife conservation areas. The system provides real-time telemetry monitoring, coordinated survey missions, and advanced analytics data collection for research purposes.
 
-## 🚀 Features
+##  Features
 
 ### Core Capabilities
 - **Real-time Vehicle Coordination**: Autonomous drone-car coordination with configurable distance thresholds
@@ -17,7 +17,7 @@ A comprehensive drone-car coordination and ground control system designed for au
 - **System Health Monitoring**: Component status tracking and fault detection
 - **Data Export**: JSON-based data persistence for research analysis
 
-## 🏗️ Architecture
+##  Architecture
 
 ```
 ┌─────────────────────────────────────┐
@@ -26,7 +26,7 @@ A comprehensive drone-car coordination and ground control system designed for au
 │     │    Web Interface        │     │
 │     │  - Map Visualization    │     │
 │     │  - Vehicle Controls     │     │
-│     │  - Analytics Dashboard │     │
+│     │  - Analytics Dashboard  │     │
 │     └─────────────────────────┘     │
 └─────────────────────────────────────┘
                     │
@@ -55,7 +55,7 @@ A comprehensive drone-car coordination and ground control system designed for au
 └─────────────────────────────────────┘
 ```
 
-## 📋 Prerequisites
+##  Prerequisites
 
 ### System Requirements
 - **Python**: 3.12 or higher
@@ -68,7 +68,7 @@ A comprehensive drone-car coordination and ground control system designed for au
 - Network connection for vehicle communication
 - Modern web browser for the interface
 
-## 🛠️ Installation
+## ️ Installation
 
 ### 1. Clone the Repository
 ```bash
@@ -128,7 +128,7 @@ vehicle_settings = [
         "type": "drone",
         "id": 1,
         "connection": "127.0.0.1",  # Vehicle IP address
-        "port": "14550",           # MAVLink port
+        "port": "14550",  # MAVLink port
         "protocol": "udp",
         "home_location": {"lat": 0.0, "lon": 0.0, "alt": 10},
     },
@@ -139,7 +139,14 @@ vehicle_settings = [
         "port": "14570",
         "protocol": "udp",
         "home_location": {"lat": 0.0, "lon": 0.0, "alt": 10},
-    }
+    },
+    {
+        "type": "operator",
+        "connection": "127.0.0.1",
+        "port": "COM6",
+        "baud_rate": "115200",
+        "protocol": "serial",
+    },
 ]
 ```
 
@@ -148,7 +155,7 @@ The system will automatically create required directories:
 - `analytics_data/` - Analytics data storage
 - `surveyed_area/` - Survey result storage
 
-## 🚀 Usage
+## Usage
 
 ### Starting the System
 
@@ -186,7 +193,7 @@ The frontend will be available at: `http://localhost:3000`
    - View real-time data in the Analytics dashboard
    - Data is automatically saved every 5 minutes
 
-## 📊 Analytics System
+##  Analytics System
 
 ### Data Collection
 The system continuously collects:
@@ -208,7 +215,7 @@ The system continuously collects:
 - `system_health.json` - Component health tracking
 - `safety_events.json` - Safety incident recording
 
-## 🔧 Development
+##  Development
 
 ### Development Servers
 ```bash
@@ -253,7 +260,7 @@ ol-pejeta-ground-control/
 └── pyproject.toml           # Python dependencies
 ```
 
-## 📡 API Reference
+##  API Reference
 
 ### Core Endpoints
 
@@ -275,7 +282,7 @@ ol-pejeta-ground-control/
 ### WebSocket Endpoints
 - `ws://localhost:8000/ws/telemetry` - Real-time telemetry stream
 
-## 🛠️ Configuration Parameters
+## ️ Configuration Parameters
 
 ### Coordination Settings (backend/config.py)
 - `MAX_FOLLOW_DISTANCE`: 500m - Maximum distance before survey abandonment
@@ -287,7 +294,7 @@ ol-pejeta-ground-control/
 - `PERSISTENCE_INTERVAL`: 300s (5 minutes) - Data save frequency
 - Vehicle telemetry: Every 10 seconds when coordination active
 
-## 🔍 Troubleshooting
+##  Troubleshooting
 
 ### Common Issues
 
@@ -326,7 +333,7 @@ npm install fails
 - Review backend terminal output for error messages
 - Ensure all dependencies are properly installed
 
-## 🤝 Contributing
+##  Contributing
 
 ### Development Setup
 1. Fork the repository
@@ -340,11 +347,11 @@ npm install fails
 - **JavaScript**: Follow ESLint configuration
 - **Commits**: Use conventional commit messages
 
-## 📄 License
+##  License
 
 []
 
-## 🏷️ Version
+## ️ Version
 
 Current version: 0.1.0
 

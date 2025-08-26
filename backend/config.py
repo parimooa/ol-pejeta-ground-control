@@ -106,10 +106,10 @@ class VehicleConstants:
 class SurveyConstants:
     """Survey and mission planning constants."""
 
-    SWATH_WIDTH: int = 5  # 50 meters - spacing between scan lines
-    PATTERN_LENGTH: int = 40  # 1000 meters - length of lawnmower stripe
+    SWATH_WIDTH: int = 50  # 50 meters - spacing between scan lines
+    PATTERN_LENGTH: int = 1000  # 1000 meters - length of lawnmower stripe
     MAX_RADIUS: int = (
-        20  # 500 meters - maximum survey radius , rectangular pattern PATTERN_LENGTH x (2 * MAX_RADIUS)
+        500  # 500 meters - maximum survey radius , rectangular pattern PATTERN_LENGTH x (2 * MAX_RADIUS)
     )
 
     LOITER_RADIUS_STANDARD: float = 15.0  # meters

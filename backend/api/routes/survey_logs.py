@@ -6,6 +6,7 @@ from backend.schemas.survey import SurveyLogResponse
 router = APIRouter(prefix="/survey-logs", tags=["Survey Logs"])
 
 
+# TODO Revisit, this may not be needed
 @router.get("/", response_model=SurveyLogResponse)
 async def get_survey_logs(
     page: int = Query(1, ge=1, description="Page number for pagination"),

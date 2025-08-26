@@ -5,13 +5,12 @@ from typing import List, Dict, Any
 
 from fastapi import APIRouter, HTTPException
 
+from ...config import CONFIG
 from ...models.waypoint import Waypoint
 from ...schemas.survey import SaveSurveyRequest, DeleteSurveyRequest
 from ...services.survey_service import survey_service
 from ...services.vehicle_service import vehicle_service
-from ...config import CONFIG
 
-# Survey storage configuration
 SURVEYS_DIR = Path(CONFIG.directories.SURVEYED_AREA)
 SURVEYS_DIR.mkdir(exist_ok=True)
 
@@ -21,7 +20,6 @@ router = APIRouter(prefix="/survey", tags=["survey"])
 @router.post("/start")
 async def start_survey_mission(vehicle_types: List[str] = ["car", "drone"]):
     """Start a coordinated survey mission"""
-    # Check if vehicles are connected
     for vehicle_type in vehicle_types:
         vehicle = vehicle_service.get_vehicle(vehicle_type)
         if not vehicle:
@@ -193,15 +191,12 @@ async def save_survey(request: SaveSurveyRequest):
     Save a survey to file-based storage in the surveyed_area directory
     """
     try:
-        # Ensure the filename ends with .json
+
         filename = request.filename
         if not filename.endswith(".json"):
             filename += ".json"
 
-        # Create a full file path
         file_path = SURVEYS_DIR / filename
-
-        # Prepare survey data with filename
         survey_data = request.data.dict()
         survey_data["filename"] = filename
         survey_data["saved_at"] = datetime.now().isoformat()
@@ -321,7 +316,7 @@ async def get_surveys_info():
     Get information about the surveys directory and stored surveys
     """
     try:
-        # Check if directory exists
+
         if not SURVEYS_DIR.exists():
             return {
                 "directory_exists": False,
@@ -330,7 +325,6 @@ async def get_surveys_info():
                 "total_size_bytes": 0,
             }
 
-        # Count files and calculate total size
         survey_files = list(SURVEYS_DIR.glob("*.json"))
         survey_count = len(survey_files)
 

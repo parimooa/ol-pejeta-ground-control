@@ -4,13 +4,13 @@ Tracks system performance metrics for research and monitoring
 """
 
 import json
-import math
 import time
+from collections import defaultdict
+from dataclasses import dataclass, asdict
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Any
-from dataclasses import dataclass, asdict
-from collections import defaultdict
+
 from backend.config import CONFIG
 
 try:
@@ -19,6 +19,7 @@ except ImportError:
     configured_site_name = CONFIG.site.DEFAULT_SITE_NAME
 
 
+# TODO replace dataclasses with Pydantic models
 @dataclass
 class CoordinationEvent:
     """Represents a coordination event for tracking"""

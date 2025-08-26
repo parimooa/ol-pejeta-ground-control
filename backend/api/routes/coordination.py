@@ -50,3 +50,19 @@ async def initiate_proximity_survey() -> Dict[str, Any]:
             }
     except Exception as e:
         return {"status": "error", "message": f"Error initiating survey: {str(e)}"}
+
+
+@router.post("/start-proximity-tracking")
+async def start_proximity_tracking() -> Dict[str, Any]:
+    """Start continuous proximity data tracking (independent of coordination service)."""
+    success = coordination_service.start_proximity_tracking()
+    if success:
+        return {"status": "success", "message": "Proximity tracking started."}
+    return {"status": "error", "message": "Proximity tracking already running."}
+
+
+@router.post("/stop-proximity-tracking")
+async def stop_proximity_tracking() -> Dict[str, Any]:
+    """Stop continuous proximity data tracking."""
+    coordination_service.stop_proximity_tracking()
+    return {"status": "success", "message": "Proximity tracking stopped."}

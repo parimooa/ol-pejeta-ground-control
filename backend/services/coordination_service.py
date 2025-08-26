@@ -47,6 +47,11 @@ class CoordinationService:
         self._survey_start_time = None
         self._survey_end_time = None
         self._survey_initiated_waypoint_id = None
+        
+        # Separate proximity tracking thread
+        self._proximity_thread = None
+        self._proximity_stop_event = threading.Event()
+        self._proximity_tracking_active = False
 
     @staticmethod
     def _calculate_distance(pos1, pos2) -> float:
@@ -328,9 +333,7 @@ class CoordinationService:
             if self._telemetry_counter % 5 == 0:  # Track every 5th loop iteration
                 self._track_vehicle_telemetry(drone, car, distance)
             
-            # Track proximity data for heatmap (when distance < 500m for meaningful data)
-            if distance <= 500:
-                self._track_proximity_data(drone, car, distance, is_surveying)
+            # Note: Proximity tracking is now handled by separate continuous thread
 
             # --- COORDINATION LOGIC ---
             # When coordination is active:
@@ -713,6 +716,45 @@ class CoordinationService:
         except Exception:
             return False
 
+    def _continuous_proximity_tracking_loop(self):
+        """Continuous proximity tracking loop that runs independently of coordination status."""
+        print("Continuous proximity tracking started.")
+        while not self._proximity_stop_event.is_set():
+            try:
+                drone = vehicle_service.get_vehicle("drone")
+                car = vehicle_service.get_vehicle("car")
+
+                if not (drone and drone.vehicle and car and car.vehicle):
+                    # Wait for vehicles to be connected
+                    time.sleep(5)
+                    continue
+
+                drone_pos = drone.position()
+                car_pos = car.position()
+
+                distance = self._calculate_distance(drone_pos, car_pos)
+                if distance == -1:
+                    # Wait and try again if position data is missing
+                    time.sleep(2)
+                    continue
+
+                # Only track meaningful proximity data (within 1km)
+                if distance <= 1000:
+                    # Check if drone is currently surveying
+                    is_surveying = self._is_drone_surveying(drone)
+                    
+                    # Track proximity data with coordination and following states
+                    self._track_proximity_data(drone, car, distance, is_surveying)
+
+                # Sleep for proximity tracking interval (every 10 seconds)
+                time.sleep(3)
+
+            except Exception as e:
+                print(f"Error in continuous proximity tracking: {e}")
+                time.sleep(5)
+
+        print("Continuous proximity tracking stopped.")
+
     def _track_mission_effectiveness(
         self, drone: "Vehicle", car: "Vehicle", duration_seconds: float, abandoned: bool
     ):
@@ -910,10 +952,18 @@ class CoordinationService:
             if vehicle:
                 vehicle.set_site_name(self.current_site_name)
 
+        # Start coordination loop
         self._stop_event.clear()
         self._thread = threading.Thread(target=self._coordination_loop, daemon=True)
         self._thread.start()
         self._is_active = True
+        
+        # Start continuous proximity tracking
+        self._proximity_stop_event.clear()
+        self._proximity_thread = threading.Thread(target=self._continuous_proximity_tracking_loop, daemon=True)
+        self._proximity_thread.start()
+        self._proximity_tracking_active = True
+        
         telemetry_manager.broadcast_event({"event": "coordination_active"})
         return True
 
@@ -937,6 +987,11 @@ class CoordinationService:
         self._last_survey_mode_state = False
         self._survey_button_enabled = False
         self._survey_initiated_by_user = False
+        
+        # Stop proximity tracking
+        self._proximity_stop_event.set()
+        self._proximity_tracking_active = False
+        
         telemetry_manager.broadcast_event({"event": "coordination_stopped"})
 
         if self._thread:
@@ -944,6 +999,40 @@ class CoordinationService:
             self._thread.join(timeout=10)
             if self._thread.is_alive():
                 print("Warning: Coordination thread did not stop gracefully")
+                
+        if self._proximity_thread:
+            # Give proximity thread time to stop
+            self._proximity_thread.join(timeout=10)
+            if self._proximity_thread.is_alive():
+                print("Warning: Proximity tracking thread did not stop gracefully")
+    
+    def start_proximity_tracking(self):
+        """Start only proximity tracking (independent of coordination service)"""
+        if self._proximity_tracking_active:
+            print("Proximity tracking is already active.")
+            return False
+            
+        print("Starting continuous proximity tracking...")
+        self._proximity_stop_event.clear()
+        self._proximity_thread = threading.Thread(target=self._continuous_proximity_tracking_loop, daemon=True)
+        self._proximity_thread.start()
+        self._proximity_tracking_active = True
+        return True
+    
+    def stop_proximity_tracking(self):
+        """Stop only proximity tracking"""
+        if not self._proximity_tracking_active:
+            print("Proximity tracking is not active.")
+            return
+            
+        print("Stopping proximity tracking...")
+        self._proximity_stop_event.set()
+        self._proximity_tracking_active = False
+        
+        if self._proximity_thread:
+            self._proximity_thread.join(timeout=10)
+            if self._proximity_thread.is_alive():
+                print("Warning: Proximity tracking thread did not stop gracefully")
 
 
 # Singleton instance
